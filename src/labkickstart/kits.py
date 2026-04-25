@@ -139,6 +139,37 @@ class PhotogateKit:
         return self.flag_w / (break_us / 1_000_000.0)
 
 
+class IMUKit:
+    """A bare-bones experiment for the LSM303 IMU module.
+
+    No derivations - the IMU module already ships pitch, roll, and three
+    acceleration components computed on-device. The kit exists so a student
+    can apply it (Arm requires a kit) and so the UI shows context for what
+    the channels mean. Future kits can add derivations (e.g. a pendulum kit
+    that derives period from accel_x oscillations).
+    """
+
+    info = KitInfo(
+        id="imu",
+        name="IMU module monitor",
+        description=(
+            "Stream pitch, roll, and the three acceleration components from a "
+            "single IMU module. Useful for tilt experiments, free-fall detection, "
+            "and pendulums. The CSV captures all five channels at the module's "
+            "native rate."
+        ),
+        params=[],
+        diagrams=[],
+    )
+
+    def configure(self, params: dict) -> None:
+        # Nothing to configure for v0.
+        return
+
+    def derive(self, sample: Sample) -> Iterable[Sample]:
+        return ()
+
+
 # Registry. Add new kits here as classes are written.
 def build_registry() -> dict[str, Kit]:
-    return {"photogate": PhotogateKit()}
+    return {"photogate": PhotogateKit(), "imu": IMUKit()}

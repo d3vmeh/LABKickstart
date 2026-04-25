@@ -52,6 +52,59 @@ class MockSensor:
             await asyncio.sleep(self._period)
 
 
+class MockIMUSensor:
+    """Simulates the LSM303 IMU module's data stream.
+
+    The real ESP32 IMU module (firmware/device_interfaces/modules/
+    esp32_IMU_module_transmitter) ships a 20-byte packed struct of five
+    little-endian float32s every 20 ms. The (future) Pi-side adapter will
+    unpack each notification into these five `Sample`s; we emit the same
+    shape here so the rest of the system is testable without hardware.
+
+    Channels:
+        pitch_deg   - degrees, -90 .. +90    (gentle slow sweep + noise)
+        roll_deg    - degrees, -180 .. +180  (gentle slow sweep + noise)
+        accel_x     - m/s^2, small jitter around 0
+        accel_y     - m/s^2, small jitter around 0
+        accel_z     - m/s^2, around -9.81 when "level" (gravity)
+    """
+
+    def __init__(
+        self,
+        device_id: str = "imu-01",
+        name: str = "MockIMU",
+        hz: float = 50.0,
+    ):
+        self._info = DeviceInfo(device_id=device_id, name=name, rssi=-55, connected=True)
+        self._period = 1.0 / hz
+
+    def devices(self) -> list[DeviceInfo]:
+        return [self._info]
+
+    async def stream(self) -> AsyncIterator[Sample]:
+        import random
+        start = time.monotonic()
+        while True:
+            t = time.monotonic() - start
+            # Slow sinusoidal tilt so a chart over a few seconds shows motion.
+            pitch_deg = 15.0 * math.sin(2 * math.pi * 0.1 * t) + random.uniform(-0.2, 0.2)
+            roll_deg = 25.0 * math.sin(2 * math.pi * 0.07 * t + 0.5) + random.uniform(-0.2, 0.2)
+            # Decompose g (~9.81 m/s^2) onto board axes given the simulated
+            # tilt, so accel components stay self-consistent with pitch/roll.
+            g = 9.81
+            p = math.radians(pitch_deg)
+            r = math.radians(roll_deg)
+            accel_x = -g * math.sin(p) + random.uniform(-0.05, 0.05)
+            accel_y = g * math.sin(r) * math.cos(p) + random.uniform(-0.05, 0.05)
+            accel_z = -g * math.cos(r) * math.cos(p) + random.uniform(-0.05, 0.05)
+            yield Sample(self._info.device_id, t, "pitch_deg", pitch_deg)
+            yield Sample(self._info.device_id, t, "roll_deg", roll_deg)
+            yield Sample(self._info.device_id, t, "accel_x", accel_x)
+            yield Sample(self._info.device_id, t, "accel_y", accel_y)
+            yield Sample(self._info.device_id, t, "accel_z", accel_z)
+            await asyncio.sleep(self._period)
+
+
 class MockPhotogateSensor:
     """Simulates the *raw* events a real two-photogate ESP32 would emit.
 
