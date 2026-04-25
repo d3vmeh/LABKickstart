@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360" role="img" aria-label="Photogate track layout">
+  <style>
+    .bg { fill: #ffffff; }
+    .track { fill: #f5f5f7; stroke: #1d1d1f; stroke-width: 1.5; }
+    .post  { fill: #eaf2ff; stroke: #1f6feb; stroke-width: 1.5; }
+    .post-cap { fill: #1f6feb; }
+    .cart  { fill: #fff5d9; stroke: #b88a00; stroke-width: 1.5; }
+    .flag  { fill: #2ea043; }
+    .beam  { stroke: #d23; stroke-width: 2; stroke-dasharray: 6 4; fill: none; }
+    .dim   { stroke: #6b6b70; stroke-width: 1; }
+    .label { font: 12px system-ui, sans-serif; fill: #1d1d1f; }
+    .pname { font: 600 13px system-ui, sans-serif; fill: #1f6feb; }
+    .small { font: 11px system-ui, sans-serif; fill: #6b6b70; }
+    .arrowhead-d { fill: #6b6b70; }
+    .arrowhead-r { fill: #d23; }
+  </style>
+  <rect class="bg" width="720" height="360"/>
+
+  <!-- Track -->
+  <rect class="track" x="40" y="200" width="640" height="20" rx="3"/>
+  <text class="small" x="40" y="240">start</text>
+  <text class="small" x="660" y="240" text-anchor="end">end</text>
+
+  <!-- Direction arrow -->
+  <line class="dim" x1="60" y1="180" x2="120" y2="180"/>
+  <polygon class="arrowhead-d" points="120,180 110,176 110,184"/>
+  <text class="small" x="90" y="172" text-anchor="middle">cart direction</text>
+
+  <!-- Gate A -->
+  <rect class="post" x="225" y="80" width="22" height="120"/>
+  <rect class="post" x="225" y="220" width="22" height="60"/>
+  <rect class="post-cap" x="220" y="76" width="32" height="6"/>
+  <rect class="post-cap" x="220" y="282" width="32" height="6"/>
+  <text class="pname" x="236" y="68" text-anchor="middle">Gate A</text>
+  <line class="beam" x1="236" y1="200" x2="236" y2="220"/>
+
+  <!-- Gate B -->
+  <rect class="post" x="525" y="80" width="22" height="120"/>
+  <rect class="post" x="525" y="220" width="22" height="60"/>
+  <rect class="post-cap" x="520" y="76" width="32" height="6"/>
+  <rect class="post-cap" x="520" y="282" width="32" height="6"/>
+  <text class="pname" x="536" y="68" text-anchor="middle">Gate B</text>
+  <line class="beam" x1="536" y1="200" x2="536" y2="220"/>
+
+  <!-- Cart -->
+  <g transform="translate(320,160)">
+    <rect class="cart" x="0" y="0" width="120" height="36" rx="4"/>
+    <circle cx="20"  cy="40" r="6" fill="#1d1d1f"/>
+    <circle cx="100" cy="40" r="6" fill="#1d1d1f"/>
+    <!-- flag -->
+    <rect class="flag" x="50" y="-22" width="20" height="22"/>
+    <text class="small" x="60" y="-28" text-anchor="middle">flag</text>
+    <!-- flag width dim -->
+    <line class="dim" x1="50" y1="-40" x2="70" y2="-40"/>
+    <line class="dim" x1="50" y1="-44" x2="50" y2="-36"/>
+    <line class="dim" x1="70" y1="-44" x2="70" y2="-36"/>
+    <text class="label" x="60" y="-48" text-anchor="middle">flag_w</text>
+  </g>
+
+  <!-- d_AB dimension between gates -->
+  <line class="dim" x1="236" y1="320" x2="536" y2="320"/>
+  <line class="dim" x1="236" y1="316" x2="236" y2="324"/>
+  <line class="dim" x1="536" y1="316" x2="536" y2="324"/>
+  <text class="label" x="386" y="338" text-anchor="middle">d_AB  (distance between gates)</text>
+
+</svg>

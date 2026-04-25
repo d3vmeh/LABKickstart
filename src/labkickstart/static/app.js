@@ -114,8 +114,27 @@ function renderKitPicker() {
     kitState.selectedId = sel.value;
     renderKitParams();
   };
-  const desc = kitState.available.find(k => k.id === kitState.selectedId)?.description ?? "";
-  document.getElementById("kit-desc").textContent = desc;
+  const kit = kitState.available.find(k => k.id === kitState.selectedId);
+  document.getElementById("kit-desc").textContent = kit?.description ?? "";
+  renderKitDiagrams(kit?.diagrams ?? []);
+}
+
+function renderKitDiagrams(diagrams) {
+  const host = document.getElementById("kit-diagrams");
+  host.replaceChildren();
+  if (!diagrams.length) return;
+  for (const d of diagrams) {
+    const summary = el("summary", { text: d.title });
+    const body = el("div", { class: "diagram-body" }, [
+      el("img", { attrs: { src: d.url, alt: `${d.title} diagram`, loading: "lazy" } }),
+    ]);
+    if (d.caption) body.appendChild(el("p", { text: d.caption }));
+    const det = document.createElement("details");
+    det.className = "diagram";
+    det.appendChild(summary);
+    det.appendChild(body);
+    host.appendChild(det);
+  }
 }
 
 function renderKitParams() {

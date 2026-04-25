@@ -8,19 +8,24 @@ Modular physics lab hub. Architecture:
 
 The v0 ships with a `MockSensor` so the whole UI works on a laptop with no hardware.
 
-## Run on Mac (dev)
+## Run (Mac or Pi)
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e .
-.venv/bin/uvicorn labkickstart.app:app --host 0.0.0.0 --port 8000
+.venv/bin/pip install -r requirements.txt
+./dev.sh                 # starts uvicorn on 0.0.0.0:8000 with --reload
 ```
 
-Open http://localhost:8000.
+Open http://localhost:8000 (or `http://<host>:8000` from another device on
+the same network).
 
-If `.venv/bin/python -c "import labkickstart"` fails after `pip install -e .`,
-re-run `.venv/bin/pip install --force-reinstall --no-deps -e .` (a hatchling
-editable install can land with a malformed `.pth` file on first install).
+`dev.sh` injects `src/` onto `PYTHONPATH` instead of relying on
+`pip install -e .` — hatchling's editable install is unreliable on this
+project. Override host/port via env vars:
+
+```bash
+HOST=127.0.0.1 PORT=8001 ./dev.sh
+```
 
 ## API
 

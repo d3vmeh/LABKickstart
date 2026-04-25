@@ -24,15 +24,27 @@ class KitParam:
 
 
 @dataclass
+class KitDiagram:
+    title: str
+    url: str  # served by the static mount, e.g. "/static/diagrams/photogate-wiring.svg"
+    caption: str = ""
+
+    def to_json(self) -> dict:
+        return {"title": self.title, "url": self.url, "caption": self.caption}
+
+
+@dataclass
 class KitInfo:
     id: str
     name: str
     description: str
     params: list[KitParam]
+    diagrams: list[KitDiagram] = field(default_factory=list)
 
     def to_json(self) -> dict:
         return {"id": self.id, "name": self.name, "description": self.description,
-                "params": [p.to_json() for p in self.params]}
+                "params": [p.to_json() for p in self.params],
+                "diagrams": [d.to_json() for d in self.diagrams]}
 
 
 class Kit(Protocol):
@@ -65,6 +77,18 @@ class PhotogateKit:
         params=[
             KitParam("d_AB", "Distance between gates", "m", default=0.50, required=True),
             KitParam("flag_w", "Flag / cart width", "m", default=0.05, required=False),
+        ],
+        diagrams=[
+            KitDiagram(
+                title="Experiment setup",
+                url="/static/diagrams/photogate-track.svg",
+                caption=(
+                    "A cart with a flag passes between two photogates. The flag breaks each "
+                    "beam as it passes through; the IR emitter sits on top of each gate post "
+                    "and the receiver below (or vice versa). d_AB and flag_w are the two "
+                    "measurements you provide."
+                ),
+            ),
         ],
     )
 
