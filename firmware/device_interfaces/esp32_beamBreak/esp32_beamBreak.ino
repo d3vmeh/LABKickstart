@@ -7,20 +7,27 @@
 
 
 #define IR_PIN 19
+#define LED_PIN 25
 
 int sensorState = 0;
 
 void setup() {
   // set up ir pin for pullup
   pinMode(IR_PIN, INPUT_PULLUP);
+
+  // LED init
+  pinMode(LED_PIN, OUTPUT);
   Serial.begin(9600);
 }
 
 void loop() {
   sensorState = digitalRead(IR_PIN);
 
-  if (sensorState == LOW) 
+  if (sensorState == LOW) {
     Serial.println("Beam Broken");
-  else 
+    digitalWrite(LED_PIN, HIGH);
+  } else {
     Serial.println("Beam not broken");
+    digitalWrite(LED_PIN, LOW);
+  }
 }
