@@ -76,11 +76,14 @@ async def stream(device: BLEDevice) -> None:
         wall = time.strftime("%H:%M:%S")
         try:
             obj = json.loads(text)
-            gate = obj.get("gate", "?")
-            us = obj.get("break_us")
-            print(f"[{wall}] #{n_events:<4} gate={gate} break={us} us  raw={text}")
         except json.JSONDecodeError:
             print(f"[{wall}] #{n_events:<4} non-json: {text!r}")
+            return
+        channel = obj.get("channel", "?")
+        value = obj.get("value")
+        extras = {k: v for k, v in obj.items() if k not in ("channel", "value")}
+        extra_str = ("  " + " ".join(f"{k}={v}" for k, v in extras.items())) if extras else ""
+        print(f"[{wall}] #{n_events:<4} {channel}={value}{extra_str}")
 
     print(f"connecting to {device.address} ({device.name})...")
     async with BleakClient(device) as client:
