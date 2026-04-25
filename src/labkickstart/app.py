@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -22,7 +22,7 @@ from .lab_guides import (
     generate_and_save,
 )
 from .runs import RunStore
-from .sensors import MockPhotogateSensor, MockSensor, Sample, SensorSource
+from .sensors import MockIMUSensor, MockPhotogateSensor, MockSensor, Sample, SensorSource
 
 load_dotenv()  # picks up .env if present; no-op otherwise
 
@@ -94,9 +94,24 @@ class Hub:
         self._subscribers.discard(q)
 
 
+def _build_sensor() -> SensorSource:
+    """Pick the mock sensor based on LK_MOCK env var.
+
+    LK_MOCK=imu        -> MockIMUSensor (5 channels, 50 Hz)
+    LK_MOCK=photogate  -> MockPhotogateSensor (default)
+    LK_MOCK=sine       -> MockSensor (legacy sine-wave smoke test)
+    """
+    choice = os.environ.get("LK_MOCK", "photogate").strip().lower()
+    if choice == "imu":
+        return MockIMUSensor()
+    if choice == "sine":
+        return MockSensor()
+    return MockPhotogateSensor()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    hub = Hub(MockPhotogateSensor())
+    hub = Hub(_build_sensor())
     app.state.hub = hub
     await hub.start()
     try:
@@ -163,18 +178,25 @@ async def get_lab_guide(kit_id: str) -> dict:
 
 
 @app.post("/api/kits/{kit_id}/lab_guide")
-async def upload_lab_guide(kit_id: str, file: UploadFile = File(...)) -> dict:
+async def upload_lab_guide(
+    kit_id: str,
+    file: UploadFile | None = File(default=None),
+    text: str | None = Form(default=None),
+) -> dict:
     hub: Hub = app.state.hub
     if kit_id not in hub.kits:
         raise HTTPException(status_code=400, detail="unknown kit")
-    pdf_bytes = await file.read()
+    if (file is None or not file.filename) and not (text and text.strip()):
+        raise HTTPException(status_code=400, detail="provide a PDF or paste text")
+    pdf_bytes = await file.read() if (file is not None and file.filename) else None
     try:
         return await generate_and_save(
             kit_id=kit_id,
-            pdf_bytes=pdf_bytes,
             kit_info=hub.kits[kit_id].info,
             api_key=os.environ.get("OPENAI_API_KEY"),
             store=hub.lab_guides,
+            pdf_bytes=pdf_bytes,
+            text=text if pdf_bytes is None else None,
         )
     except PDFTooLargeError as e:
         raise HTTPException(status_code=413, detail=str(e))
