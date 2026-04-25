@@ -17,12 +17,12 @@
 //       - publishes the same JSON as a BLE notification on the events
 //         characteristic, so the Pi can subscribe and consume events.
 //
-// Protocol (one JSON object per event):
-//   {"gate":"A","break_us":59917}
+// Protocol (project-wide convention; see firmware/device_interfaces/README.md):
+//   one JSON object per BLE notification, shape {"channel": "...", "value": N}
 //
-// The Pi maps this onto the project's Sample shape:
-//   channel = "gate_A_break_us"
-//   value   = 59917
+//   {"channel":"gate_A_break_us","value":59917}
+//
+// The Pi maps each event directly onto a Sample(channel, value).
 
 #include <Arduino.h>
 #include <BLEDevice.h>
@@ -123,9 +123,9 @@ void loop() {
     eventReady = false;
     interrupts();
 
-    char payload[64];
+    char payload[80];
     int n = snprintf(payload, sizeof(payload),
-                     "{\"gate\":\"%s\",\"break_us\":%u}",
+                     "{\"channel\":\"gate_%s_break_us\",\"value\":%u}",
                      GATE_LABEL, (unsigned)dur);
     if (n > 0) {
       Serial.println(payload);
