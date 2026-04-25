@@ -6,17 +6,6 @@ VL6180X ToF_sensor;
 
 #define SCALE_FACTOR 2
 
-void i2c_regWrite(uint16_t reg, uint8_t value) {
-  Wire.beginTransmission(0x29);
-  Wire.write(reg >> 8);
-  Wire.write(reg & 0xFF);
-  Wire.write(value);
-  uint8_t error = Wire.endTransmission();
-  if (error != 0) {
-    Serial.println("I2C Error");
-  }
-}
-
 void setup() {
   Serial.begin(115200);
   Wire.begin();
