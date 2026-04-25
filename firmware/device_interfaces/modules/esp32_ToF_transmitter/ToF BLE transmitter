@@ -1,0 +1,111 @@
+#include <Arduino.h>
+#include <Wire.h>
+
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLE2902.h>
+
+#include <Adafruit_VL53L0X.h>
+
+
+#define SERVICE_UUID        "f30c13bf-c618-424d-aeb6-d035b933750f"
+#define TOF_DISTANCE_UUID   "9c4b7f8e-2b42-4d9a-9a26-6ab3a1d43f11"
+
+#define BLE_DEVICE_NAME     "TOF_Module"
+
+BLECharacteristic* pDistanceCharacteristic;
+
+
+#define I2C_SDA_PIN 8
+#define I2C_SCL_PIN 9
+
+Adafruit_VL53L0X tof = Adafruit_VL53L0X();
+
+
+#define SEND_DELAY_MS 50
+
+
+struct __attribute__((packed)) ToFData {
+  float distance_mm;       // distance in millimeters
+  uint32_t timestamp_ms;   // millis()
+  uint8_t status;          // 0 = valid, 1 = out of range / invalid
+};
+
+ToFData tof_data;
+
+
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  Serial.println();
+  Serial.println("Starting ESP32-S3 ToF BLE transmitter...");
+
+  // Start I2C
+  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+
+  // Start ToF sensor
+  if (!tof.begin()) {
+    Serial.println("Failed to detect VL53L0X ToF sensor.");
+    Serial.println("Check wiring: VIN, GND, SDA, SCL.");
+    while (1) {
+      delay(1000);
+    }
+  }
+
+  Serial.println("VL53L0X detected.");
+
+  // Start BLE
+  BLEDevice::init(BLE_DEVICE_NAME);
+
+  BLEServer* pServer = BLEDevice::createServer();
+  BLEService* pService = pServer->createService(SERVICE_UUID);
+
+  pDistanceCharacteristic = pService->createCharacteristic(
+    TOF_DISTANCE_UUID,
+    BLECharacteristic::PROPERTY_NOTIFY
+  );
+
+  pDistanceCharacteristic->addDescriptor(new BLE2902());
+
+  pService->start();
+  pServer->getAdvertising()->start();
+
+  Serial.print("BLE advertising started as: ");
+  Serial.println(BLE_DEVICE_NAME);
+  Serial.print("Distance characteristic UUID: ");
+  Serial.println(TOF_DISTANCE_UUID);
+}
+
+
+
+void loop() {
+  VL53L0X_RangingMeasurementData_t measure;
+
+  tof.rangingTest(&measure, false);
+
+  tof_data.timestamp_ms = millis();
+
+  if (measure.RangeStatus != 4) {
+    // Valid reading
+    tof_data.distance_mm = (float)measure.RangeMilliMeter;
+    tof_data.status = 0;
+  } else {
+    // Out of range or invalid reading
+    tof_data.distance_mm = -1.0f;
+    tof_data.status = 1;
+  }
+
+  pDistanceCharacteristic->setValue((uint8_t*)&tof_data, sizeof(ToFData));
+  pDistanceCharacteristic->notify();
+
+  Serial.print("distance_mm=");
+  Serial.print(tof_data.distance_mm);
+  Serial.print(", timestamp_ms=");
+  Serial.print(tof_data.timestamp_ms);
+  Serial.print(", status=");
+  Serial.println(tof_data.status);
+
+  delay(SEND_DELAY_MS);
+}
