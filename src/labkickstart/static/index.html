@@ -30,13 +30,11 @@
       --danger-700:   #76281b;
       --ok:           #2c5b30;        /* deep moss */
       --accent:       #8a6e2a;        /* muted ochre */
-      --shadow:       none;
       /* Computer Modern (Latin Modern) for headings; Courier Prime for body. */
       --font-display: "Computer Modern Serif", "Latin Modern Roman", "CMU Serif", Georgia, serif;
       --font-body:    "Courier Prime", "Courier New", "Courier", monospace;
       --font-mono:    "Courier Prime", "Courier New", monospace;
       --font-serif:   "Computer Modern Serif", Georgia, serif;
-      --font-sans:    "Courier Prime", "Courier New", monospace; /* legacy alias */
     }
     * { box-sizing: border-box; }
     html, body {
@@ -79,7 +77,6 @@
       border-radius: 0;                  /* no rounded modern corners */
       padding: 22px 24px;
       margin-bottom: 18px;
-      box-shadow: var(--shadow);
       animation: section-in .5s ease both;
     }
     section:nth-of-type(1) { animation-delay: .04s; }
@@ -267,7 +264,7 @@
     .lg-text {
       width: 100%; min-height: 150px; box-sizing: border-box;
       padding: 12px; font: 13px/1.5 var(--font-mono);
-      border-radius: 3px; border: 1px solid var(--rule);
+      border-radius: 0; border: 1px solid var(--rule);
       background: var(--surface); color: var(--ink); resize: vertical;
     }
     .lg-upload-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
@@ -355,7 +352,7 @@
       letter-spacing: .04em;
       color: var(--ink);
       padding: 3px 6px;
-      border-radius: 3px;
+      border-radius: 0;
       transition: background .12s;
     }
     .chart-toggle:hover { background: var(--rule-soft); }
