@@ -16,19 +16,6 @@ CSV_FILE = "imu_data_log.csv"
 
 
 def decode_imu_packet(data: bytearray):
-    """
-    ESP32 sends:
-    struct IMUData {
-        float pitch;
-        float roll;
-        float accelX;
-        float accelY;
-        float accelZ;
-    };
-
-    Total: 5 floats = 20 bytes.
-    ESP32 is little-endian, so use '<5f'.
-    """
     raw = bytes(data)
 
     if len(raw) != 20:
