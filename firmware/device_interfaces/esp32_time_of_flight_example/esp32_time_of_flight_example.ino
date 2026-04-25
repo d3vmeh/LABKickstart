@@ -1,29 +1,42 @@
 #include "Wire.h"
-#include "Adafruit_VL6180X.h"
+#include "VL6180X.h"
 #include "stdint.h"
 
-Adafruit_VL6180X ToF_sensor;
+VL6180X ToF_sensor;
+
+#define SCALE_FACTOR 2
+
+void i2c_regWrite(uint16_t reg, uint8_t value) {
+  Wire.beginTransmission(0x29);
+  Wire.write(reg >> 8);
+  Wire.write(reg & 0xFF);
+  Wire.write(value);
+  uint8_t error = Wire.endTransmission();
+  if (error != 0) {
+    Serial.println("I2C Error");
+  }
+}
 
 void setup() {
   Serial.begin(115200);
   Wire.begin();
 
-  if (!ToF_sensor.begin()) {
-    Serial.println("Sensor Init Fail");
-    while(1);
-  }
+  ToF_sensor.init();
+  ToF_sensor.configureDefault();
+  ToF_sensor.setScaling(SCALE_FACTOR);
+  ToF_sensor.setTimeout(500);
 }
 
 void loop() {
-  uint8_t distance = ToF_sensor.readRange();
-  uint8_t status = ToF_sensor.readRangeStatus();
+  // Serial.print("Scaling: ");
+  // Serial.println(ToF_sensor.getScaling());
 
-  if (status == VL6180X_ERROR_NONE) {
-    Serial.print("Distance: ");
-    Serial.println(distance);
-  } else {
-    Serial.println("Error");
-  }
+  Serial.print("Distance: ");
+  Serial.print(ToF_sensor.readRangeSingleMillimeters());
+
+  if (ToF_sensor.timeoutOccurred()) { Serial.print(" TIMEOUT"); }
+  
+  Serial.println();
   
   delay(50);
 }
