@@ -106,10 +106,23 @@ class LabGuideStore:
             return None
         return json.loads(p.read_text())
 
-    def save(self, kit_id: str, pdf_bytes: bytes, generated: dict) -> None:
+    def save(
+        self,
+        kit_id: str,
+        generated: dict,
+        *,
+        pdf_bytes: bytes | None = None,
+        text: str | None = None,
+    ) -> None:
         d = self._kit_dir(kit_id)
         d.mkdir(parents=True, exist_ok=True)
-        (d / "source.pdf").write_bytes(pdf_bytes)
+        # Clean any prior source so we don't leave stale PDFs/txt behind.
+        for stale in ("source.pdf", "source.txt"):
+            (d / stale).unlink(missing_ok=True)
+        if pdf_bytes is not None:
+            (d / "source.pdf").write_bytes(pdf_bytes)
+        if text is not None:
+            (d / "source.txt").write_text(text)
         (d / "generated.json").write_text(json.dumps(generated, indent=2))
 
     def delete(self, kit_id: str) -> bool:
@@ -231,15 +244,32 @@ def _validate(generated: dict) -> dict:
 
 async def generate_and_save(
     kit_id: str,
-    pdf_bytes: bytes,
     kit_info: KitInfo,
     api_key: str | None,
     store: LabGuideStore,
+    *,
+    pdf_bytes: bytes | None = None,
+    text: str | None = None,
 ) -> dict:
+    """Generate a guide from either a PDF or pre-extracted text.
+
+    Exactly one of `pdf_bytes` / `text` should be supplied. If a PDF is
+    supplied it's also persisted as `source.pdf` for traceability; if text
+    is supplied it's persisted as `source.txt`.
+    """
     if not api_key:
         raise LLMConfigError("OPENAI_API_KEY is not configured on the server")
-    text = extract_pdf_text(pdf_bytes)            # raises PDF*Error
-    prompt = _build_user_prompt(kit_info, text)
+    if pdf_bytes is not None:
+        body_text = extract_pdf_text(pdf_bytes)   # raises PDF*Error
+    elif text is not None:
+        body_text = text.strip()
+        if not body_text:
+            raise PDFEmptyTextError("no text provided")
+        if len(body_text) > MAX_TEXT_CHARS:
+            body_text = body_text[:MAX_TEXT_CHARS]
+    else:
+        raise PDFInvalidError("provide either a PDF or text")
+    prompt = _build_user_prompt(kit_info, body_text)
     last_error: Exception | None = None
     for attempt in (1, 2):                        # one retry
         try:
@@ -251,5 +281,5 @@ async def generate_and_save(
             log.warning("lab-guide LLM attempt %d failed: %s", attempt, e)
     else:
         raise LLMCallError(str(last_error) if last_error else "LLM call failed")
-    store.save(kit_id, pdf_bytes, generated)
+    store.save(kit_id, generated, pdf_bytes=pdf_bytes, text=body_text if pdf_bytes is None else None)
     return generated

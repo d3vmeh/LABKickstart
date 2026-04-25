@@ -210,14 +210,15 @@ async function loadLabGuide() {
   renderLabGuide();
 }
 
-async function uploadLabGuide(file) {
+async function uploadLabGuide({ file, text }) {
   if (!labGuideState.kitId) return;
   labGuideState.busy = true;
   labGuideState.error = null;
   renderLabGuide();
   try {
     const fd = new FormData();
-    fd.append("file", file);
+    if (file) fd.append("file", file);
+    if (text) fd.append("text", text);
     const r = await fetch(
       `/api/kits/${encodeURIComponent(labGuideState.kitId)}/lab_guide`,
       { method: "POST", body: fd },
@@ -256,12 +257,12 @@ function renderLabGuide() {
   }
   if (labGuideState.error) {
     body.appendChild(el("div", { class: "lg-error", text: labGuideState.error }));
-    body.appendChild(buildUploadRow("Try again"));
+    body.appendChild(buildUploadRow("Generate"));
     return;
   }
   if (!labGuideState.guide) {
     body.appendChild(el("div", { class: "lg-empty", text: "No guide uploaded yet." }));
-    body.appendChild(buildUploadRow("Upload PDF"));
+    body.appendChild(buildUploadRow("Generate"));
     return;
   }
   // Loaded state: materials + steps
@@ -307,33 +308,89 @@ function renderLabGuide() {
   body.appendChild(buildUploadRow("Replace", { compact: true }));
 }
 
-function buildUploadRow(buttonLabel, opts = {}) {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = "application/pdf,.pdf";
-  input.style.display = "none";
-  input.onchange = () => {
-    const f = input.files && input.files[0];
-    if (f) uploadLabGuide(f);
-  };
-
-  const link = document.createElement("a");
-  link.textContent = buttonLabel;
-  link.onclick = (e) => { e.preventDefault(); input.click(); };
-
-  const row = el("div", { class: "lg-replace" });
+function buildUploadRow(submitLabel, opts = {}) {
+  // Compact: one "Replace" link that opens a file picker. No tabs.
   if (opts.compact) {
+    const row = el("div", { class: "lg-replace" });
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/pdf,.pdf";
+    input.style.display = "none";
+    input.onchange = () => {
+      const f = input.files && input.files[0];
+      if (f) uploadLabGuide({ file: f });
+    };
+    const link = document.createElement("a");
+    link.textContent = submitLabel;
+    link.onclick = (e) => { e.preventDefault(); input.click(); };
     row.appendChild(link);
-  } else {
-    const btn = document.createElement("button");
-    btn.className = "primary";
-    btn.textContent = buttonLabel;
-    btn.onclick = () => input.click();
-    row.appendChild(btn);
-    row.appendChild(el("span", { text: "Generates with gpt-4o-mini, takes ~10 s." }));
+    row.appendChild(input);
+    return row;
   }
-  row.appendChild(input);
-  return row;
+
+  // Full upload UI: tabs + matching input + submit button.
+  const wrap = el("div");
+  const tabs = el("div", { class: "lg-tabs" });
+  const pdfTab = document.createElement("button");
+  pdfTab.type = "button";
+  pdfTab.className = "lg-tab active";
+  pdfTab.textContent = "PDF";
+  const textTab = document.createElement("button");
+  textTab.type = "button";
+  textTab.className = "lg-tab";
+  textTab.textContent = "Paste text";
+  tabs.appendChild(pdfTab);
+  tabs.appendChild(textTab);
+  wrap.appendChild(tabs);
+
+  const pdfPanel = el("div", { class: "lg-upload-row" });
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = "application/pdf,.pdf";
+  pdfPanel.appendChild(fileInput);
+  pdfPanel.appendChild(el("span", { class: "hint", text: "Generates with gpt-4o-mini, takes ~10 s." }));
+
+  const textPanel = el("div");
+  textPanel.style.display = "none";
+  const textarea = document.createElement("textarea");
+  textarea.className = "lg-text";
+  textarea.placeholder = "Paste your lab guide text here…";
+  textPanel.appendChild(textarea);
+
+  wrap.appendChild(pdfPanel);
+  wrap.appendChild(textPanel);
+
+  const submitRow = el("div", { class: "lg-replace" });
+  const btn = document.createElement("button");
+  btn.className = "primary";
+  btn.textContent = submitLabel;
+  btn.onclick = () => {
+    if (pdfTab.classList.contains("active")) {
+      const f = fileInput.files && fileInput.files[0];
+      if (!f) { alert("Choose a PDF first."); return; }
+      uploadLabGuide({ file: f });
+    } else {
+      const t = textarea.value.trim();
+      if (!t) { alert("Paste some text first."); return; }
+      uploadLabGuide({ text: t });
+    }
+  };
+  submitRow.appendChild(btn);
+  wrap.appendChild(submitRow);
+
+  const switchTo = (which) => {
+    if (which === "pdf") {
+      pdfTab.classList.add("active"); textTab.classList.remove("active");
+      pdfPanel.style.display = ""; textPanel.style.display = "none";
+    } else {
+      textTab.classList.add("active"); pdfTab.classList.remove("active");
+      pdfPanel.style.display = "none"; textPanel.style.display = "";
+    }
+  };
+  pdfTab.onclick = () => switchTo("pdf");
+  textTab.onclick = () => switchTo("text");
+
+  return wrap;
 }
 
 async function applyKit() {
@@ -390,7 +447,8 @@ function ensurePlot() {
     plot.setSize({ width: document.getElementById("chart").clientWidth, height: 320 }));
 }
 
-const COLORS = ["#1f6feb", "#d23", "#2ea043", "#a371f7", "#fb8500"];
+// Lab-notebook palette: deep teal, warm rust, moss, brass, plum, slate.
+const COLORS = ["#0c4a48", "#9a3a2a", "#316e3c", "#b9863c", "#5a3f6e", "#3a4a5e"];
 
 function ensureSeries(channel) {
   if (series.has(channel)) return;
