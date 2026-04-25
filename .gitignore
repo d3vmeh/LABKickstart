@@ -5,6 +5,9 @@ __pycache__/
 uv.lock
 .DS_Store
 data/runs/
+data/lab_guides/
+.env
+.env.local
 *.egg-info/
 dist/
 build/

@@ -1,3 +1,7 @@
 fastapi>=0.115
 uvicorn[standard]>=0.30
 bleak>=0.22
+openai>=1.0
+pypdf>=4.0
+python-multipart>=0.0.7
+python-dotenv>=1.0

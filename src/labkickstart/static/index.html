@@ -36,6 +36,28 @@
     .diagram-body { padding: 0 14px 14px; }
     .diagram-body img { display: block; width: 100%; height: auto; }
     .diagram-body p { margin: 8px 0 0; font-size: 12px; color: #6b6b70; }
+
+    /* Lab guide panel reuses the .diagram dropdown shell so styles stay consistent. */
+    #kit-lab-guide { margin-top: 8px; }
+    .lg-empty, .lg-busy, .lg-error { padding: 10px 0; }
+    .lg-error { color: #b81f2a; }
+    .lg-section { margin-top: 14px; }
+    .lg-section h4 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #6b6b70; }
+    .lg-materials { list-style: disc; padding-left: 22px; margin: 0; }
+    .lg-materials li { margin: 2px 0; }
+    .lg-materials .qty { color: #6b6b70; }
+    .lg-materials .note { color: #6b6b70; font-style: italic; }
+    .lg-steps { display: flex; flex-direction: column; gap: 8px; }
+    .lg-step { border: 1px solid #e5e5ea; border-radius: 6px; background: #ffffff; padding: 0; }
+    .lg-step > .lg-step-action { display: flex; gap: 10px; padding: 10px 12px; align-items: baseline; }
+    .lg-step .n { font-weight: 600; color: #1f6feb; min-width: 22px; font-variant-numeric: tabular-nums; }
+    .lg-step details summary { cursor: pointer; padding: 0 12px 10px 44px; color: #1f6feb; list-style: none; font-size: 12px; user-select: none; }
+    .lg-step details summary::-webkit-details-marker { display: none; }
+    .lg-step details summary::before { content: "▸ Why?"; transition: none; }
+    .lg-step details[open] summary::before { content: "▾ Why?"; }
+    .lg-step details .lg-reason { padding: 0 12px 12px 44px; color: #1d1d1f; font-size: 13px; line-height: 1.5; }
+    .lg-replace { margin-top: 14px; font-size: 12px; color: #6b6b70; display: flex; gap: 10px; align-items: center; }
+    .lg-replace a { cursor: pointer; }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e5e5ea; font-variant-numeric: tabular-nums; }
     th { font-size: 12px; text-transform: uppercase; color: #6b6b70; font-weight: 600; }
@@ -65,6 +87,7 @@
     </div>
     <p id="kit-desc" class="sub" style="margin: 8px 0 0"></p>
     <div id="kit-diagrams"></div>
+    <div id="kit-lab-guide"></div>
     <div id="kit-params" class="row" style="margin-top: 12px"></div>
     <div class="row" style="margin-top: 12px">
       <button id="kit-apply" class="primary">Apply kit</button>
