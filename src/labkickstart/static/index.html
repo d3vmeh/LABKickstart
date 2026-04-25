@@ -312,6 +312,46 @@
     /* uPlot color overrides — match the lab palette so the chart fits the rest. */
     .uplot, .uplot * { font-family: var(--font-mono); }
     .uplot .u-axis { color: var(--ink-soft); }
+
+    /* Per-device chart cards */
+    #charts { display: flex; flex-direction: column; gap: 14px; }
+    .chart-card {
+      border: 1px solid var(--rule-soft);
+      border-radius: 4px;
+      background: var(--surface);
+      padding: 12px 14px 10px;
+    }
+    .chart-card-head {
+      display: flex; align-items: baseline; gap: 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px dashed var(--rule-soft);
+      margin-bottom: 8px;
+    }
+    .chart-card-title {
+      font: 600 12px/1 var(--font-mono);
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--ink);
+    }
+    .chart-card-meta { font: 12px/1 var(--font-mono); color: var(--ink-soft); }
+    .chart-toggles { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 8px; }
+    .chart-toggle {
+      display: inline-flex; align-items: center; gap: 6px;
+      cursor: pointer; user-select: none;
+      font: 500 11px/1 var(--font-mono);
+      letter-spacing: .04em;
+      color: var(--ink);
+      padding: 3px 6px;
+      border-radius: 3px;
+      transition: background .12s;
+    }
+    .chart-toggle:hover { background: var(--rule-soft); }
+    .chart-toggle input { margin: 0; accent-color: var(--primary); }
+    .chart-toggle .swatch {
+      width: 10px; height: 10px; border-radius: 2px; display: inline-block;
+    }
+    .chart-toggle.off { color: var(--ink-soft); }
+    .chart-toggle.off .swatch { opacity: .25; }
   </style>
 </head>
 <body>
@@ -320,7 +360,11 @@
 
   <section>
     <h2>Devices</h2>
-    <table id="devices"><thead><tr><th>Name</th><th>ID</th><th>RSSI</th><th>Status</th></tr></thead><tbody></tbody></table>
+    <div class="row" style="justify-content: space-between; margin-bottom: 8px">
+      <span id="ble-status" class="status">idle</span>
+      <button id="ble-scan" class="primary">Scan</button>
+    </div>
+    <table id="devices"><thead><tr><th>Name</th><th>Address</th><th>RSSI</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
   </section>
 
   <section>
@@ -351,11 +395,14 @@
 
   <section>
     <h2>Live</h2>
-    <div id="chart"></div>
+    <div id="charts"></div>
+    <div id="charts-empty" class="lg-empty" style="padding: 14px 0; color: var(--ink-soft); font-style: italic;">
+      No live data yet — connect a module above to see its readings here.
+    </div>
     <div class="row" style="margin-top:8px">
       <span id="ws-status" class="status">connecting…</span>
       <span style="flex:1"></span>
-      <button id="clear-chart">Clear chart</button>
+      <button id="clear-chart">Clear charts</button>
     </div>
   </section>
 
