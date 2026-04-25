@@ -22,9 +22,9 @@ from .lab_guides import (
     generate_and_save,
 )
 from .runs import RunStore
-from .sensors import MockIMUSensor, MockPhotogateSensor, MockSensor, Sample, SensorSource
+from .sensors import MockIMUSensor, MockPhotogateSensor, MockToFSensor, Sample, SensorSource
 
-load_dotenv()  # picks up .env if present; no-op otherwise
+load_dotenv()
 
 STATIC = Path(__file__).parent / "static"
 
@@ -48,7 +48,6 @@ class Hub:
         self.active_kit_params: dict = {}
         self._subscribers: set[asyncio.Queue[dict]] = set()
         self._task: asyncio.Task | None = None
-        # The BLE manager streams via callback into self.dispatch.
         from .ble_manager import BLEManager
         self.ble = BLEManager(dispatch=self.dispatch)
 
@@ -81,9 +80,7 @@ class Hub:
             self.dispatch(sample)
 
     def dispatch(self, sample: Sample) -> None:
-        """Receive one sample (raw from any source). Persist if a run is
-        active, fan out over WebSocket, then run kit derivation and
-        recurse on each derived sample."""
+        """Persist + broadcast one sample, then run kit derivation."""
         self._emit(sample)
         kit = self.active_kit
         if kit is not None:
@@ -108,29 +105,18 @@ class Hub:
         self._subscribers.discard(q)
 
 
+_MOCKS = {
+    "imu": MockIMUSensor,
+    "photogate": MockPhotogateSensor,
+    "tof": MockToFSensor,
+}
+
+
 def _build_sensor() -> SensorSource | None:
-    """Pick the internal sensor source based on the LK_SENSOR env var.
-
-    LK_SENSOR=imu        -> MockIMUSensor (5 channels, 50 Hz)
-    LK_SENSOR=photogate  -> MockPhotogateSensor
-    LK_SENSOR=sine       -> MockSensor (sine smoke test)
-    LK_SENSOR=imu_real   -> single-device BLE adapter (legacy; auto-connects
-                            to IMU_Module without UI control)
-
-    Default (unset) -> None: no internal source. The BLE manager is the
-    only data path; users discover and connect ESP32s from the UI.
-    """
-    raw = os.environ.get("LK_SENSOR", os.environ.get("LK_MOCK", "")).strip().lower()
-    if raw == "imu":
-        return MockIMUSensor()
-    if raw == "photogate":
-        return MockPhotogateSensor()
-    if raw == "sine":
-        return MockSensor()
-    if raw == "imu_real":
-        from .ble_sensors import BLEIMUSensor
-        return BLEIMUSensor()
-    return None
+    """Pick a mock source from LK_SENSOR. Unset = no internal source;
+    the BLE manager is the only data path."""
+    cls = _MOCKS.get(os.environ.get("LK_SENSOR", "").strip().lower())
+    return cls() if cls else None
 
 
 @asynccontextmanager
@@ -155,9 +141,6 @@ async def index() -> HTMLResponse:
 
 @app.get("/api/devices")
 async def devices():
-    """Unified view: any internal source's devices PLUS all BLE manager
-    devices (scanned/connecting/connected). The UI uses this to render the
-    Devices section regardless of mode."""
     hub: Hub = app.state.hub
     out: list[dict] = []
     if hub.source is not None:

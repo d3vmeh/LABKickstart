@@ -24,32 +24,13 @@ class DeviceInfo:
 
 
 class SensorSource(Protocol):
-    """A source of sensor samples. v0 = MockSensor; later = BLESensor."""
+    """A source of sensor samples (mock or real BLE adapter)."""
 
     def devices(self) -> list[DeviceInfo]: ...
 
     def stream(self) -> AsyncIterator[Sample]:
         """Yield samples forever until cancelled."""
         ...
-
-
-class MockSensor:
-    """Emits a sine wave on one synthetic device, ~50 Hz. Useful for chart smoke tests."""
-
-    def __init__(self, device_id: str = "mock-01", name: str = "MockESP32", hz: float = 50.0):
-        self._info = DeviceInfo(device_id=device_id, name=name, rssi=-42, connected=True)
-        self._period = 1.0 / hz
-
-    def devices(self) -> list[DeviceInfo]:
-        return [self._info]
-
-    async def stream(self) -> AsyncIterator[Sample]:
-        start = time.monotonic()
-        while True:
-            t = time.monotonic() - start
-            yield Sample(self._info.device_id, t, "ax", math.sin(2 * math.pi * 0.5 * t))
-            yield Sample(self._info.device_id, t, "ay", math.cos(2 * math.pi * 0.5 * t))
-            await asyncio.sleep(self._period)
 
 
 class MockIMUSensor:
@@ -102,6 +83,38 @@ class MockIMUSensor:
             yield Sample(self._info.device_id, t, "accel_x", accel_x)
             yield Sample(self._info.device_id, t, "accel_y", accel_y)
             yield Sample(self._info.device_id, t, "accel_z", accel_z)
+            await asyncio.sleep(self._period)
+
+
+class MockToFSensor:
+    """Simulates a ToF distance sensor (e.g. VL53L0X / VL53L1X).
+
+    Emits one channel `distance_mm` at ~20 Hz. The motion is a slow
+    sinusoid around a 500 mm center with small measurement noise, so the
+    chart has a recognizable physics-like signal you can scan visually.
+    """
+
+    def __init__(
+        self,
+        device_id: str = "tof-01",
+        name: str = "MockToF",
+        hz: float = 20.0,
+    ):
+        self._info = DeviceInfo(device_id=device_id, name=name, rssi=-60, connected=True)
+        self._period = 1.0 / hz
+
+    def devices(self) -> list[DeviceInfo]:
+        return [self._info]
+
+    async def stream(self) -> AsyncIterator[Sample]:
+        import random
+        start = time.monotonic()
+        while True:
+            t = time.monotonic() - start
+            # 500 mm center, ±200 mm swing at 0.5 Hz, plus a few mm of jitter.
+            d = 500.0 + 200.0 * math.sin(2 * math.pi * 0.5 * t)
+            d += random.uniform(-3.0, 3.0)
+            yield Sample(self._info.device_id, t, "distance_mm", d)
             await asyncio.sleep(self._period)
 
 

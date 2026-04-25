@@ -170,6 +170,34 @@ class IMUKit:
         return ()
 
 
+class ToFKit:
+    """Time-of-Flight distance monitor.
+
+    No derivations in v0 - the kit just provides experiment context for
+    the single `distance_mm` channel. Future versions could derive
+    instantaneous velocity from successive samples.
+    """
+
+    info = KitInfo(
+        id="tof",
+        name="ToF distance monitor",
+        description=(
+            "Stream distance from a Time-of-Flight sensor. Useful for free-fall "
+            "drops, pendulums, and anything where a single 1-D distance vs. time "
+            "trace is enough. The CSV captures distance_mm at the module's "
+            "native rate."
+        ),
+        params=[],
+        diagrams=[],
+    )
+
+    def configure(self, params: dict) -> None:
+        return
+
+    def derive(self, sample: Sample) -> Iterable[Sample]:
+        return ()
+
+
 # Registry. Add new kits here as classes are written.
 def build_registry() -> dict[str, Kit]:
-    return {"photogate": PhotogateKit(), "imu": IMUKit()}
+    return {"photogate": PhotogateKit(), "imu": IMUKit(), "tof": ToFKit()}
