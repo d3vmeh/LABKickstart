@@ -58,28 +58,17 @@ def _decode_imu(data: bytes) -> Iterable[tuple[str, float]]:
 
 
 def _decode_tof_distance(data: bytes) -> Iterable[tuple[str, float]]:
-    """Length-based heuristic, mirroring the teammate's tof_ble_receiver.py
-    while the firmware is still being finalized. Once the real ESP32 sketch
-    commits to one format, replace this with a single-format decoder.
+    """Decode the TOF_Module's 9-byte packed struct:
+        <f distance_mm, I timestamp_ms, B status (0=valid, 1=invalid)>
+    Invalid readings (out-of-range / sensor error) are dropped so the
+    chart isn't polluted with sentinel values like -1.
     """
-    # 1) UTF-8 string like "123.45"
-    try:
-        text = data.decode("utf-8").strip()
-        return (("distance_mm", float(text)),)
-    except (UnicodeDecodeError, ValueError):
-        pass
-    # 2) uint16 little-endian (2 bytes, common for VL53L0X)
-    if len(data) == 2:
-        v, = struct.unpack("<H", data)
-        return (("distance_mm", float(v)),)
-    # 3) 4 bytes -> try float32 first, fall back to uint32
-    if len(data) == 4:
-        f, = struct.unpack("<f", data)
-        if -1000.0 < f < 10000.0:
-            return (("distance_mm", f),)
-        u, = struct.unpack("<I", data)
-        return (("distance_mm", float(u)),)
-    return ()
+    if len(data) != 9:
+        return ()
+    distance_mm, _ts_ms, status = struct.unpack("<fIB", data)
+    if status != 0:
+        return ()
+    return (("distance_mm", distance_mm),)
 
 
 def _make_beambreak_decoder() -> Decoder:
@@ -133,13 +122,9 @@ PROFILES: dict[str, Profile] = {
     "TOF_Module": Profile(
         name="TOF_Module",
         service_uuid="f30c13bf-c618-424d-aeb6-d035b933750f",
-        # The teammate's firmware hasn't committed to a characteristic UUID
-        # yet (their receiver still has PUT_YOUR_TOF_DISTANCE_UUID_HERE).
-        # `None` tells the manager to auto-discover the first NOTIFY char
-        # on the device. Replace with a real UUID once the firmware lands.
-        char_uuid=None,
+        char_uuid="9c4b7f8e-2b42-4d9a-9a26-6ab3a1d43f11",
         decoder=_stateless(_decode_tof_distance),
-        description="Time-of-Flight sensor: distance_mm",
+        description="VL53L0X distance sensor: distance_mm",
     ),
 }
 

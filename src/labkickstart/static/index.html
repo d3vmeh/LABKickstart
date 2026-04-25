@@ -270,6 +270,26 @@
     .lg-upload-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
     .lg-upload-row .hint { font-size: 12px; color: var(--ink-soft); font-style: italic; }
 
+    /* Stop conditions (kit-declared triggers) under the Run controls. */
+    #run-triggers:not(:empty) {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--rule-soft);
+    }
+    .trig-head {
+      font: italic 400 14px/1 var(--font-display);
+      margin-bottom: 8px;
+      color: var(--ink);
+    }
+    .trig-row {
+      display: flex; align-items: center; gap: 8px;
+      font: 12px/1.4 var(--font-mono);
+      padding: 4px 0;
+    }
+    .trig-row label.lbl { color: var(--ink); }
+    .trig-row input[type=number] { width: 90px; }
+    .trig-row .unit { color: var(--ink-soft); }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -401,6 +421,7 @@
       <button id="stop" class="danger" disabled>Stop</button>
       <span id="run-status" class="status">apply a kit to enable</span>
     </div>
+    <div id="run-triggers"></div>
   </section>
 
   <section>

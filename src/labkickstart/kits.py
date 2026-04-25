@@ -33,6 +33,29 @@ class KitDiagram:
         return {"title": self.title, "url": self.url, "caption": self.caption}
 
 
+@dataclass(frozen=True)
+class Trigger:
+    """A run-time condition the student can enable when arming.
+    When the condition fires, the active run stops (and the CSV closes
+    with the triggering sample as its last row)."""
+    id: str
+    label: str
+    channel: str
+    unit: str
+    direction: str        # "below" | "above"
+    default_value: float
+
+    def to_json(self) -> dict:
+        return {
+            "id": self.id,
+            "label": self.label,
+            "channel": self.channel,
+            "unit": self.unit,
+            "direction": self.direction,
+            "default_value": self.default_value,
+        }
+
+
 @dataclass
 class KitInfo:
     id: str
@@ -40,11 +63,13 @@ class KitInfo:
     description: str
     params: list[KitParam]
     diagrams: list[KitDiagram] = field(default_factory=list)
+    triggers: list[Trigger] = field(default_factory=list)
 
     def to_json(self) -> dict:
         return {"id": self.id, "name": self.name, "description": self.description,
                 "params": [p.to_json() for p in self.params],
-                "diagrams": [d.to_json() for d in self.diagrams]}
+                "diagrams": [d.to_json() for d in self.diagrams],
+                "triggers": [t.to_json() for t in self.triggers]}
 
 
 class Kit(Protocol):
@@ -189,6 +214,16 @@ class ToFKit:
         ),
         params=[],
         diagrams=[],
+        triggers=[
+            Trigger(
+                id="auto_stop_below",
+                label="Auto-stop when distance falls below",
+                channel="distance_mm",
+                unit="mm",
+                direction="below",
+                default_value=50.0,
+            ),
+        ],
     )
 
     def configure(self, params: dict) -> None:
