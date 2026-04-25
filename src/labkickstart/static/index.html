@@ -21,7 +21,11 @@
     button.danger { background: #d23; color: #ffffff; border-color: #d23; }
     button.danger:hover { background: #b81f2a; }
     button:disabled { opacity: .4; cursor: not-allowed; }
-    input[type=text] { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid #d2d2d7; background: #ffffff; color: #1d1d1f; min-width: 200px; }
+    input[type=text], input[type=number], select { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid #d2d2d7; background: #ffffff; color: #1d1d1f; }
+    input[type=text] { min-width: 200px; }
+    input[type=number] { width: 110px; }
+    label { color: #6b6b70; }
+    .param-group { display: inline-flex; align-items: center; gap: 6px; }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e5e5ea; font-variant-numeric: tabular-nums; }
     th { font-size: 12px; text-transform: uppercase; color: #6b6b70; font-weight: 600; }
@@ -44,12 +48,26 @@
   </section>
 
   <section>
+    <h2>Kit</h2>
+    <div class="row">
+      <label for="kit-select">Experiment</label>
+      <select id="kit-select"></select>
+    </div>
+    <p id="kit-desc" class="sub" style="margin: 8px 0 0"></p>
+    <div id="kit-params" class="row" style="margin-top: 12px"></div>
+    <div class="row" style="margin-top: 12px">
+      <button id="kit-apply" class="primary">Apply kit</button>
+      <span id="kit-status" class="status">no kit selected</span>
+    </div>
+  </section>
+
+  <section>
     <h2>Run</h2>
     <div class="row">
       <input id="run-name" type="text" placeholder="run name (e.g., cart-incline-1)" />
-      <button id="arm" class="primary">Arm</button>
+      <button id="arm" class="primary" disabled>Arm</button>
       <button id="stop" class="danger" disabled>Stop</button>
-      <span id="run-status" class="status">idle</span>
+      <span id="run-status" class="status">apply a kit to enable</span>
     </div>
   </section>
 

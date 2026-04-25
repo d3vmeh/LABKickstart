@@ -8,6 +8,8 @@ function el(tag, opts = {}, children = []) {
   if (opts.text != null) e.textContent = opts.text;
   if (opts.class) e.className = opts.class;
   if (opts.href) e.href = opts.href;
+  if (opts.id) e.id = opts.id;
+  if (opts.attrs) for (const [k, v] of Object.entries(opts.attrs)) e.setAttribute(k, v);
   for (const c of children) if (c) e.appendChild(c);
   return e;
 }
@@ -65,11 +67,127 @@ function setRunUI(active) {
     status.textContent = `recording: ${active.name} (${active.run_id})`;
     status.classList.add("live");
   } else {
-    arm.disabled = false;
     stop.disabled = true;
-    status.textContent = "idle";
+    status.classList.remove("live");
+    if (kitState.activeId) {
+      arm.disabled = false;
+      status.textContent = "idle";
+    } else {
+      arm.disabled = true;
+      status.textContent = "apply a kit to enable";
+    }
+  }
+}
+
+// ---------- Kits ----------
+const kitState = {
+  available: [],          // [{id, name, description, params: [{key, label, unit, default, required}]}]
+  selectedId: null,       // id in the dropdown (may differ from activeId until Apply)
+  activeId: null,         // id confirmed applied on the server
+  activeParams: {},
+};
+
+async function loadKits() {
+  const data = await api("/api/kits");
+  kitState.available = data.kits;
+  kitState.activeId = data.active?.id ?? null;
+  kitState.activeParams = data.active?.params ?? {};
+  if (!kitState.selectedId) {
+    kitState.selectedId = kitState.activeId ?? data.kits[0]?.id ?? null;
+  }
+  renderKitPicker();
+  renderKitParams();
+  renderKitStatus();
+}
+
+function renderKitPicker() {
+  const sel = document.getElementById("kit-select");
+  sel.replaceChildren();
+  for (const k of kitState.available) {
+    const o = document.createElement("option");
+    o.value = k.id;
+    o.textContent = k.name;
+    if (k.id === kitState.selectedId) o.selected = true;
+    sel.appendChild(o);
+  }
+  sel.onchange = () => {
+    kitState.selectedId = sel.value;
+    renderKitParams();
+  };
+  const desc = kitState.available.find(k => k.id === kitState.selectedId)?.description ?? "";
+  document.getElementById("kit-desc").textContent = desc;
+}
+
+function renderKitParams() {
+  const host = document.getElementById("kit-params");
+  host.replaceChildren();
+  const kit = kitState.available.find(k => k.id === kitState.selectedId);
+  if (!kit) return;
+  for (const p of kit.params) {
+    const isActive = kitState.activeId === kit.id;
+    const current = isActive && kitState.activeParams[p.key] != null
+      ? kitState.activeParams[p.key]
+      : p.default;
+    const input = el("input", {
+      id: `kp-${p.key}`,
+      attrs: { type: "number", step: "0.001", "data-key": p.key,
+               value: String(current),
+               placeholder: p.required ? "required" : "optional" },
+    });
+    if (!p.required) input.removeAttribute("placeholder"); // we'll show via label
+    const label = el("label", {
+      class: "param-group",
+      attrs: { for: `kp-${p.key}` },
+    }, [document.createTextNode(`${p.label}${p.required ? "" : " (optional)"}: `), input,
+        document.createTextNode(` ${p.unit}`)]);
+    host.appendChild(label);
+  }
+}
+
+function renderKitStatus() {
+  const status = document.getElementById("kit-status");
+  if (kitState.activeId) {
+    const k = kitState.available.find(x => x.id === kitState.activeId);
+    const parts = Object.entries(kitState.activeParams)
+      .map(([k, v]) => `${k}=${v}`).join(", ");
+    status.textContent = `active: ${k?.name ?? kitState.activeId}${parts ? " · " + parts : ""}`;
+    status.classList.add("live");
+  } else {
+    status.textContent = "no kit selected";
     status.classList.remove("live");
   }
+}
+
+async function applyKit() {
+  const kit = kitState.available.find(k => k.id === kitState.selectedId);
+  if (!kit) return;
+  const params = {};
+  for (const p of kit.params) {
+    const input = document.getElementById(`kp-${p.key}`);
+    const raw = input.value.trim();
+    if (raw === "") {
+      if (p.required) {
+        alert(`${p.label} is required`);
+        return;
+      }
+      continue;
+    }
+    const num = Number(raw);
+    if (!Number.isFinite(num)) { alert(`${p.label} must be a number`); return; }
+    params[p.key] = num;
+  }
+  const r = await fetch("/api/kit", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id: kit.id, params }),
+  });
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    alert(`Could not apply kit: ${body.detail || r.status}`);
+    return;
+  }
+  await loadKits();
+  await loadRuns();  // re-evaluate Arm enable state
 }
 
 // Chart state: parallel arrays uPlot expects.
@@ -103,7 +221,13 @@ function ensureSeries(channel) {
   plot.addSeries({ label: channel, stroke: COLORS[(idx - 1) % COLORS.length], width: 2 }, idx);
 }
 
+// Raw event channels (e.g. "gate_A_break_us") use scales orders of magnitude
+// different from the derived physics quantities, so they'd swamp the chart.
+// They're still recorded to CSV server-side; we just don't plot them.
+const RAW_CHANNEL_RE = /_(?:us|raw|ns|ms)$/;
+
 function pushSample(s) {
+  if (RAW_CHANNEL_RE.test(s.channel)) return;
   ensurePlot();
   ensureSeries(s.channel);
   // If a run is active, anchor t=0 to the first sample we receive after Arm.
@@ -146,16 +270,23 @@ function connectWS() {
 
 document.getElementById("arm").addEventListener("click", async () => {
   const name = document.getElementById("run-name").value.trim() || "run";
-  await api("/api/arm", {
+  const r = await fetch("/api/arm", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name }),
   });
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    alert(`Could not arm: ${body.detail || r.status}`);
+    return;
+  }
   // Reset chart and arm the t-offset so x-axis starts at 0 for this run.
   clearChart();
   tOffset = Infinity;  // sentinel: "use the next sample's t as offset"
   await loadRuns();
 });
+
+document.getElementById("kit-apply").addEventListener("click", applyKit);
 
 document.getElementById("stop").addEventListener("click", async () => {
   await api("/api/stop", { method: "POST" });
@@ -179,6 +310,7 @@ document.getElementById("delete-all").addEventListener("click", async () => {
 (async function init() {
   ensurePlot();
   await loadDevices();
+  await loadKits();
   await loadRuns();
   connectWS();
 })();
