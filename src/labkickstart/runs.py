@@ -95,3 +95,13 @@ class RunStore:
         for p in self.data_dir.glob(f"{run_id}_*.csv"):
             return p
         return None
+
+    def delete_all(self) -> int:
+        """Delete every CSV in data_dir. Refuses if a run is active."""
+        if self._active is not None:
+            raise RuntimeError("stop the active run before deleting")
+        n = 0
+        for p in self.data_dir.glob("*.csv"):
+            p.unlink()
+            n += 1
+        return n

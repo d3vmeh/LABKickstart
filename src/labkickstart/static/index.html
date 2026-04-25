@@ -6,28 +6,32 @@
   <title>LABKickstart</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.min.css">
   <style>
-    :root { color-scheme: light dark; }
+    :root { color-scheme: light; }
+    html, body { background: #ffffff; color: #1d1d1f; }
     body { font: 14px/1.4 system-ui, sans-serif; padding: 24px; max-width: 1100px; margin: 0 auto; }
     h1 { margin: 0 0 4px; font-size: 22px; }
-    .sub { color: #888; margin-bottom: 24px; }
-    section { border: 1px solid #8884; border-radius: 8px; padding: 16px; margin-bottom: 18px; }
-    section h2 { margin: 0 0 12px; font-size: 15px; text-transform: uppercase; letter-spacing: .5px; color: #888; }
+    .sub { color: #6b6b70; margin-bottom: 24px; }
+    section { background: #ffffff; border: 1px solid #e5e5ea; border-radius: 8px; padding: 16px; margin-bottom: 18px; }
+    section h2 { margin: 0 0 12px; font-size: 15px; text-transform: uppercase; letter-spacing: .5px; color: #6b6b70; }
     .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-    button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid #8886; background: #f5f5f7; cursor: pointer; }
+    button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid #d2d2d7; background: #f5f5f7; color: #1d1d1f; cursor: pointer; }
     button:hover { background: #ececef; }
-    button.primary { background: #1f6feb; color: white; border-color: #1f6feb; }
-    button.danger { background: #d23; color: white; border-color: #d23; }
+    button.primary { background: #1f6feb; color: #ffffff; border-color: #1f6feb; }
+    button.primary:hover { background: #195fcc; }
+    button.danger { background: #d23; color: #ffffff; border-color: #d23; }
+    button.danger:hover { background: #b81f2a; }
     button:disabled { opacity: .4; cursor: not-allowed; }
-    input[type=text] { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid #8886; min-width: 200px; }
+    input[type=text] { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid #d2d2d7; background: #ffffff; color: #1d1d1f; min-width: 200px; }
     table { width: 100%; border-collapse: collapse; }
-    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #8883; font-variant-numeric: tabular-nums; }
-    th { font-size: 12px; text-transform: uppercase; color: #888; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e5e5ea; font-variant-numeric: tabular-nums; }
+    th { font-size: 12px; text-transform: uppercase; color: #6b6b70; font-weight: 600; }
     .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
     .pill.ok { background: #2ea04322; color: #2ea043; }
-    .pill.off { background: #8883; color: #888; }
+    .pill.off { background: #e5e5ea; color: #6b6b70; }
     #chart { width: 100%; }
-    .status { font-variant-numeric: tabular-nums; color: #888; }
+    .status { font-variant-numeric: tabular-nums; color: #6b6b70; }
     .status.live { color: #2ea043; }
+    a { color: #1f6feb; }
   </style>
 </head>
 <body>
@@ -62,6 +66,9 @@
   <section>
     <h2>History</h2>
     <table id="runs"><thead><tr><th>Run ID</th><th>Name</th><th>Size</th><th></th></tr></thead><tbody></tbody></table>
+    <div class="row" style="margin-top:12px; justify-content: flex-end">
+      <button id="delete-all" class="danger" title="Debug: delete all stored runs">Delete all runs</button>
+    </div>
   </section>
 
   <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.iife.min.js"></script>

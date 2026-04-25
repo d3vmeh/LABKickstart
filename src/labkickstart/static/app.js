@@ -165,6 +165,17 @@ document.getElementById("stop").addEventListener("click", async () => {
 
 document.getElementById("clear-chart").addEventListener("click", clearChart);
 
+document.getElementById("delete-all").addEventListener("click", async () => {
+  if (!confirm("Delete ALL stored runs? This cannot be undone.")) return;
+  const r = await fetch("/api/runs", { method: "DELETE" });
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    alert(`Could not delete: ${body.detail || r.status}`);
+    return;
+  }
+  await loadRuns();
+});
+
 (async function init() {
   ensurePlot();
   await loadDevices();

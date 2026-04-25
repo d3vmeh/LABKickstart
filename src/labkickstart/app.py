@@ -115,6 +115,16 @@ async def stop() -> dict:
     return run.to_json()
 
 
+@app.delete("/api/runs")
+async def delete_all_runs() -> dict:
+    hub: Hub = app.state.hub
+    try:
+        deleted = hub.runs.delete_all()
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"deleted": deleted}
+
+
 @app.get("/api/runs/{run_id}/csv")
 async def run_csv(run_id: str):
     hub: Hub = app.state.hub
