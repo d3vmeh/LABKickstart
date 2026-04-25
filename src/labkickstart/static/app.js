@@ -252,7 +252,7 @@ function renderLabGuide() {
   host.appendChild(det);
 
   if (labGuideState.busy) {
-    body.appendChild(el("div", { class: "lg-busy", text: "Generating with gpt-4o-mini…" }));
+    body.appendChild(el("div", { class: "lg-busy", text: "Generating…" }));
     return;
   }
   if (labGuideState.error) {
@@ -305,30 +305,54 @@ function renderLabGuide() {
     sec.appendChild(stack);
     body.appendChild(sec);
   }
-  body.appendChild(buildUploadRow("Replace", { compact: true }));
+  body.appendChild(buildLoadedFooter());
 }
 
-function buildUploadRow(submitLabel, opts = {}) {
-  // Compact: one "Replace" link that opens a file picker. No tabs.
-  if (opts.compact) {
-    const row = el("div", { class: "lg-replace" });
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "application/pdf,.pdf";
-    input.style.display = "none";
-    input.onchange = () => {
-      const f = input.files && input.files[0];
-      if (f) uploadLabGuide({ file: f });
-    };
-    const link = document.createElement("a");
-    link.textContent = submitLabel;
-    link.onclick = (e) => { e.preventDefault(); input.click(); };
-    row.appendChild(link);
-    row.appendChild(input);
-    return row;
-  }
+function buildLoadedFooter() {
+  const row = el("div", { class: "lg-replace" });
 
-  // Full upload UI: tabs + matching input + submit button.
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = "application/pdf,.pdf";
+  fileInput.style.display = "none";
+  fileInput.onchange = () => {
+    const f = fileInput.files && fileInput.files[0];
+    if (f) uploadLabGuide({ file: f });
+  };
+  const replace = document.createElement("a");
+  replace.textContent = "Replace";
+  replace.onclick = (e) => { e.preventDefault(); fileInput.click(); };
+
+  const sep = el("span", { text: "·" });
+
+  const clear = document.createElement("a");
+  clear.textContent = "Clear";
+  clear.onclick = async (e) => {
+    e.preventDefault();
+    if (!confirm("Delete the lab guide for this kit?")) return;
+    const r = await fetch(
+      `/api/kits/${encodeURIComponent(labGuideState.kitId)}/lab_guide`,
+      { method: "DELETE" },
+    );
+    if (!r.ok && r.status !== 204) {
+      const body = await r.json().catch(() => ({}));
+      alert(`Could not clear: ${body.detail || r.status}`);
+      return;
+    }
+    labGuideState.guide = null;
+    labGuideState.error = null;
+    renderLabGuide();
+  };
+
+  row.appendChild(replace);
+  row.appendChild(sep);
+  row.appendChild(clear);
+  row.appendChild(fileInput);
+  return row;
+}
+
+function buildUploadRow(submitLabel) {
+  // Tabs + matching input + submit button.
   const wrap = el("div");
   const tabs = el("div", { class: "lg-tabs" });
   const pdfTab = document.createElement("button");
@@ -348,7 +372,7 @@ function buildUploadRow(submitLabel, opts = {}) {
   fileInput.type = "file";
   fileInput.accept = "application/pdf,.pdf";
   pdfPanel.appendChild(fileInput);
-  pdfPanel.appendChild(el("span", { class: "hint", text: "Generates with gpt-4o-mini, takes ~10 s." }));
+  pdfPanel.appendChild(el("span", { class: "hint", text: "Takes about 10 seconds." }));
 
   const textPanel = el("div");
   textPanel.style.display = "none";
