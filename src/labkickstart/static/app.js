@@ -201,7 +201,47 @@ function renderSelectedKit() {
   document.getElementById("kit-desc").textContent = kit?.description ?? "";
   renderKitDiagrams(kit?.diagrams ?? []);
   renderKitParams();
+  renderKitTriggers(kit?.triggers ?? []);
   loadLabGuide();
+}
+
+function renderKitTriggers(triggers) {
+  const host = document.getElementById("run-triggers");
+  host.replaceChildren();
+  if (!triggers.length) return;
+  host.appendChild(el("div", { class: "trig-head", text: "Stop conditions" }));
+  for (const t of triggers) {
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.id = `trig-${t.id}`;
+    cb.dataset.triggerId = t.id;
+
+    const num = document.createElement("input");
+    num.type = "number";
+    num.step = "0.001";
+    num.value = String(t.default_value);
+    num.dataset.triggerInput = t.id;
+
+    const row = el("div", { class: "trig-row" }, [
+      cb,
+      el("label", { class: "lbl", attrs: { for: `trig-${t.id}` }, text: t.label }),
+      num,
+      el("span", { class: "unit", text: t.unit }),
+    ]);
+    host.appendChild(row);
+  }
+}
+
+function collectActiveTriggers() {
+  const out = [];
+  document.querySelectorAll('#run-triggers input[type=checkbox]').forEach(cb => {
+    if (!cb.checked) return;
+    const tid = cb.dataset.triggerId;
+    const numEl = document.querySelector(`#run-triggers input[data-trigger-input="${tid}"]`);
+    const v = Number(numEl?.value);
+    if (Number.isFinite(v)) out.push({ id: tid, threshold: v });
+  });
+  return out;
 }
 
 function renderKitDiagrams(diagrams) {
@@ -674,10 +714,11 @@ function connectWS() {
 
 document.getElementById("arm").addEventListener("click", async () => {
   const name = document.getElementById("run-name").value.trim() || "run";
+  const triggers = collectActiveTriggers();
   const r = await fetch("/api/arm", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, triggers }),
   });
   if (!r.ok) {
     const body = await r.json().catch(() => ({}));
