@@ -216,6 +216,11 @@ class BLEManager:
                     address=addr, name=name, rssi=adv.rssi,
                     profile_id=name, last_seen=now,
                 )
+        # Evict stale, idle devices so the list doesn't grow without bound.
+        stale_cutoff = now - 60
+        for addr in [a for a, d in self._devices.items()
+                     if not d.connected and not d.connecting and d.last_seen < stale_cutoff]:
+            self._devices.pop(addr, None)
         log.info("[BLE] scan complete: %d known device(s)",
                  len([d for d in self._devices.values() if d.last_seen >= now - 1]))
         return self.state()
