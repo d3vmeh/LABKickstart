@@ -188,11 +188,19 @@ function renderKitPicker() {
   }
   sel.onchange = () => {
     kitState.selectedId = sel.value;
-    renderKitParams();
+    renderSelectedKit();
   };
+  renderSelectedKit();
+}
+
+// Render everything that depends on the *selected* kit (i.e. what the
+// dropdown is currently pointing at, regardless of whether the user has
+// hit Apply yet).
+function renderSelectedKit() {
   const kit = kitState.available.find(k => k.id === kitState.selectedId);
   document.getElementById("kit-desc").textContent = kit?.description ?? "";
   renderKitDiagrams(kit?.diagrams ?? []);
+  renderKitParams();
   loadLabGuide();
 }
 

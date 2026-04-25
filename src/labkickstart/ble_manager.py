@@ -11,7 +11,6 @@ Adding support for a new module = one entry in PROFILES.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import struct
 import time
@@ -25,13 +24,24 @@ log = logging.getLogger(__name__)
 
 # ---------- Profiles ----------
 
+Decoder = Callable[[bytes], Iterable[tuple[str, float]]]
+
+
 @dataclass(frozen=True)
 class Profile:
     name: str                                            # device-name match
     service_uuid: str
-    char_uuid: str
-    decoder: Callable[[bytes], Iterable[tuple[str, float]]]
+    char_uuid: str | None                                # None = auto-discover first NOTIFY
+    # Per-connection decoder factory. Called once at connect time so the
+    # decoder can hold state (e.g. last-BLOCKED timestamps per gate) without
+    # leaking across reconnections.
+    decoder: Callable[[], Decoder]
     description: str = ""
+
+
+def _stateless(decoder: Decoder) -> Callable[[], Decoder]:
+    """Wrap a stateless decoder so it fits the factory signature."""
+    return lambda: decoder
 
 
 def _decode_imu(data: bytes) -> Iterable[tuple[str, float]]:
@@ -47,16 +57,62 @@ def _decode_imu(data: bytes) -> Iterable[tuple[str, float]]:
     )
 
 
-def _decode_photogate_json(data: bytes) -> Iterable[tuple[str, float]]:
+def _decode_tof_distance(data: bytes) -> Iterable[tuple[str, float]]:
+    """Length-based heuristic, mirroring the teammate's tof_ble_receiver.py
+    while the firmware is still being finalized. Once the real ESP32 sketch
+    commits to one format, replace this with a single-format decoder.
+    """
+    # 1) UTF-8 string like "123.45"
     try:
-        obj = json.loads(data.decode("utf-8", errors="replace"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return ()
-    ch = obj.get("channel")
-    val = obj.get("value")
-    if not isinstance(ch, str) or not isinstance(val, (int, float)):
-        return ()
-    return ((ch, float(val)),)
+        text = data.decode("utf-8").strip()
+        return (("distance_mm", float(text)),)
+    except (UnicodeDecodeError, ValueError):
+        pass
+    # 2) uint16 little-endian (2 bytes, common for VL53L0X)
+    if len(data) == 2:
+        v, = struct.unpack("<H", data)
+        return (("distance_mm", float(v)),)
+    # 3) 4 bytes -> try float32 first, fall back to uint32
+    if len(data) == 4:
+        f, = struct.unpack("<f", data)
+        if -1000.0 < f < 10000.0:
+            return (("distance_mm", f),)
+        u, = struct.unpack("<I", data)
+        return (("distance_mm", float(u)),)
+    return ()
+
+
+def _make_beambreak_decoder() -> Decoder:
+    """Stateful decoder for the BEAMBREAK_Module: pairs each BLOCKED with its
+    next CLEAR per gate, emits `gate_A_break_us` / `gate_B_break_us` with the
+    duration in microseconds. PhotogateKit consumes those channels directly.
+
+    Wire format (per BLE notification): 6 bytes packed `<BBI`:
+        gate_id (uint8, 1 or 2), state (uint8, 1=BLOCKED 0=CLEAR), timestamp_us (uint32)
+    """
+    last_blocked_us: dict[int, int] = {}
+
+    def decode(data: bytes):
+        if len(data) != 6:
+            return ()
+        gate_id, state, ts_us = struct.unpack("<BBI", data)
+        label = {1: "A", 2: "B"}.get(gate_id)
+        if label is None:
+            return ()
+        if state == 1:
+            # BLOCKED: remember when, wait for CLEAR.
+            last_blocked_us[gate_id] = ts_us
+            return ()
+        # CLEAR: emit duration if we saw the matching BLOCKED.
+        start = last_blocked_us.pop(gate_id, None)
+        if start is None:
+            return ()
+        dur = ts_us - start
+        if dur < 0:
+            dur += 2 ** 32  # micros() overflow (~71 min)
+        return ((f"gate_{label}_break_us", float(dur)),)
+
+    return decode
 
 
 PROFILES: dict[str, Profile] = {
@@ -64,22 +120,26 @@ PROFILES: dict[str, Profile] = {
         name="IMU_Module",
         service_uuid="f30c13bf-c618-424d-aeb6-d035b933750f",
         char_uuid="2be54bb2-4e7d-4ac2-885d-c019bc130fea",
-        decoder=_decode_imu,
+        decoder=_stateless(_decode_imu),
         description="LSM303 accel: pitch/roll/accel_x/y/z",
     ),
-    "LK-Photogate-A": Profile(
-        name="LK-Photogate-A",
-        service_uuid="5b1e0001-9e8d-4f3a-b50f-1a2b3c4d5e6f",
-        char_uuid="5b1e0002-9e8d-4f3a-b50f-1a2b3c4d5e6f",
-        decoder=_decode_photogate_json,
-        description="Photogate A: emits gate_A_break_us events",
+    "BEAMBREAK_Module": Profile(
+        name="BEAMBREAK_Module",
+        service_uuid="f30c13bf-c618-424d-aeb6-d035b933750f",
+        char_uuid="7c2b6f3a-4a8c-4d24-8f8b-32e2a5c76f10",
+        decoder=_make_beambreak_decoder,
+        description="Two-gate photogate: pairs BLOCKED/CLEAR into gate_A/B_break_us",
     ),
-    "LK-Photogate-B": Profile(
-        name="LK-Photogate-B",
-        service_uuid="5b1e0001-9e8d-4f3a-b50f-1a2b3c4d5e6f",
-        char_uuid="5b1e0002-9e8d-4f3a-b50f-1a2b3c4d5e6f",
-        decoder=_decode_photogate_json,
-        description="Photogate B: emits gate_B_break_us events",
+    "TOF_Module": Profile(
+        name="TOF_Module",
+        service_uuid="f30c13bf-c618-424d-aeb6-d035b933750f",
+        # The teammate's firmware hasn't committed to a characteristic UUID
+        # yet (their receiver still has PUT_YOUR_TOF_DISTANCE_UUID_HERE).
+        # `None` tells the manager to auto-discover the first NOTIFY char
+        # on the device. Replace with a real UUID once the firmware lands.
+        char_uuid=None,
+        decoder=_stateless(_decode_tof_distance),
+        description="Time-of-Flight sensor: distance_mm",
     ),
 }
 
@@ -119,11 +179,8 @@ class BLEManager:
     SCAN_TIMEOUT_S = 6.0
 
     def __init__(self, dispatch: Callable[[Sample], Awaitable[None] | None]):
-        # Hub.dispatch(sample) - synchronous OK; we tolerate either.
         self._dispatch = dispatch
-        # Address -> DeviceState (covers both scanned and connected)
         self._devices: dict[str, DeviceState] = {}
-        # Address -> running asyncio task for the streaming connection
         self._tasks: dict[str, asyncio.Task] = {}
         self._stream_start = time.monotonic()
 
@@ -192,6 +249,17 @@ class BLEManager:
             raise RuntimeError("unknown device")
         return d.to_json()
 
+    @staticmethod
+    def _discover_notify_char(client) -> str:
+        """Pick the first NOTIFY-capable characteristic on the device.
+        Used when a profile leaves char_uuid unspecified."""
+        for svc in client.services:
+            for ch in svc.characteristics:
+                if "notify" in ch.properties:
+                    log.info("[BLE] auto-selected NOTIFY char %s", ch.uuid)
+                    return ch.uuid
+        raise RuntimeError("no NOTIFY characteristics found on device")
+
     async def shutdown(self) -> None:
         for addr in list(self._tasks):
             try:
@@ -206,6 +274,7 @@ class BLEManager:
 
         d = self._devices[address]
         profile = PROFILES[d.profile_id]
+        decoder = profile.decoder()  # fresh per-connection decoder (may hold state)
         log.info("[BLE] connecting to %s (%s)", d.name, address)
         try:
             async with BleakClient(address) as client:
@@ -214,14 +283,15 @@ class BLEManager:
 
                 def on_notify(_sender, data: bytearray):
                     t = time.monotonic() - self._stream_start
-                    for ch, val in profile.decoder(bytes(data)):
+                    for ch, val in decoder(bytes(data)):
                         d.samples_received += 1
                         try:
                             self._dispatch(Sample(d.address, t, ch, val))
                         except Exception as e:
                             log.warning("[BLE] dispatch error: %s", e)
 
-                await client.start_notify(profile.char_uuid, on_notify)
+                char_uuid = profile.char_uuid or self._discover_notify_char(client)
+                await client.start_notify(char_uuid, on_notify)
                 d.connected = True
                 d.connecting = False
                 log.info("[BLE] streaming %s", d.name)
