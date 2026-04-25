@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LABKickstart</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.min.css">
+  <style>
+    :root { color-scheme: light dark; }
+    body { font: 14px/1.4 system-ui, sans-serif; padding: 24px; max-width: 1100px; margin: 0 auto; }
+    h1 { margin: 0 0 4px; font-size: 22px; }
+    .sub { color: #888; margin-bottom: 24px; }
+    section { border: 1px solid #8884; border-radius: 8px; padding: 16px; margin-bottom: 18px; }
+    section h2 { margin: 0 0 12px; font-size: 15px; text-transform: uppercase; letter-spacing: .5px; color: #888; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid #8886; background: #f5f5f7; cursor: pointer; }
+    button:hover { background: #ececef; }
+    button.primary { background: #1f6feb; color: white; border-color: #1f6feb; }
+    button.danger { background: #d23; color: white; border-color: #d23; }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    input[type=text] { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid #8886; min-width: 200px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #8883; font-variant-numeric: tabular-nums; }
+    th { font-size: 12px; text-transform: uppercase; color: #888; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+    .pill.ok { background: #2ea04322; color: #2ea043; }
+    .pill.off { background: #8883; color: #888; }
+    #chart { width: 100%; }
+    .status { font-variant-numeric: tabular-nums; color: #888; }
+    .status.live { color: #2ea043; }
+  </style>
+</head>
+<body>
+  <h1>LABKickstart</h1>
+  <div class="sub">Modular physics lab hub</div>
+
+  <section>
+    <h2>Devices</h2>
+    <table id="devices"><thead><tr><th>Name</th><th>ID</th><th>RSSI</th><th>Status</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section>
+    <h2>Run</h2>
+    <div class="row">
+      <input id="run-name" type="text" placeholder="run name (e.g., cart-incline-1)" />
+      <button id="arm" class="primary">Arm</button>
+      <button id="stop" class="danger" disabled>Stop</button>
+      <span id="run-status" class="status">idle</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Live</h2>
+    <div id="chart"></div>
+    <div class="row" style="margin-top:8px">
+      <span id="ws-status" class="status">connecting…</span>
+      <span style="flex:1"></span>
+      <button id="clear-chart">Clear chart</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>History</h2>
+    <table id="runs"><thead><tr><th>Run ID</th><th>Name</th><th>Size</th><th></th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.iife.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
