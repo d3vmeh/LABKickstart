@@ -12,7 +12,7 @@
 #include <Adafruit_LSM303_Accel.h>
 
 // constants
-#define BLE_DELAY 20    // in ms
+#define BLE_DELAY 100    // in ms
 
 // if we want to change between double and float values
 using Precision = float;
@@ -36,6 +36,14 @@ struct __attribute__((packed)) IMUData {
 } imu_data;
 
 
+// v2: re-start advertising on disconnect so the Pi can reconnect
+// without resetting the ESP32.
+class ServerCallbacks : public BLEServerCallbacks {
+  void onDisconnect(BLEServer*) override {
+    BLEDevice::startAdvertising();
+  }
+};
+
 void setup() {
   if (!accel.begin()) {
     Serial.println("No accel detected");
@@ -44,6 +52,7 @@ void setup() {
 
   BLEDevice::init("IMU_Module");
   BLEServer* pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new ServerCallbacks());        
   BLEService* pService = pServer->createService(SERVICE_UUID);
 
   pIMUCharacteristic = pService->createCharacteristic(IMU_DATA_UUID, BLECharacteristic::PROPERTY_NOTIFY);
