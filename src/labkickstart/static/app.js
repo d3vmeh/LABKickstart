@@ -22,21 +22,97 @@ async function api(path, opts) {
 
 async function loadDevices() {
   const devs = await api("/api/devices");
+  // Cache friendly names for chart titles.
+  for (const d of devs) deviceLabels.set(d.address, d.name);
+  refreshChartTitles();
   const tb = document.querySelector("#devices tbody");
   tb.replaceChildren();
+  if (devs.length === 0) {
+    tb.appendChild(el("tr", {}, [
+      el("td", {
+        attrs: { colspan: "5" },
+        class: "lg-empty",
+        text: "No devices yet — hit Scan to discover ESP32 modules in range.",
+      }),
+    ]));
+    return;
+  }
   for (const d of devs) {
-    const code = el("code", { text: d.device_id });
-    const pill = el("span", {
-      class: `pill ${d.connected ? "ok" : "off"}`,
-      text: d.connected ? "connected" : "offline",
-    });
+    const status = deviceStatusPill(d);
+    const action = deviceAction(d);
     tb.appendChild(el("tr", {}, [
       el("td", { text: d.name }),
-      el("td", {}, [code]),
-      el("td", { text: d.rssi ?? "" }),
-      el("td", {}, [pill]),
+      el("td", {}, [el("code", { text: d.address })]),
+      el("td", { text: d.rssi == null ? "" : `${d.rssi}` }),
+      el("td", {}, [status]),
+      el("td", {}, [action]),
     ]));
   }
+}
+
+function deviceStatusPill(d) {
+  if (d.connecting) return el("span", { class: "pill off", text: "connecting" });
+  if (d.connected)  return el("span", { class: "pill ok",  text: "connected" });
+  if (d.error)      return el("span", { class: "pill off", text: "error" });
+  return el("span", { class: "pill off", text: "available" });
+}
+
+function deviceAction(d) {
+  if (d.internal) return document.createTextNode("");  // mock/legacy: no toggle
+  if (d.connected || d.connecting) {
+    const btn = document.createElement("button");
+    btn.className = "danger";
+    btn.textContent = "Disconnect";
+    btn.disabled = d.connecting;
+    btn.onclick = () => bleDisconnect(d.address);
+    return btn;
+  }
+  const btn = document.createElement("button");
+  btn.className = "primary";
+  btn.textContent = "Connect";
+  btn.onclick = () => bleConnect(d.address);
+  return btn;
+}
+
+async function bleScan() {
+  const status = document.getElementById("ble-status");
+  const btn = document.getElementById("ble-scan");
+  btn.disabled = true;
+  status.textContent = "scanning…";
+  status.classList.add("live");
+  try {
+    const r = await fetch("/api/ble/scan", { method: "POST" });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      throw new Error(body.detail || `HTTP ${r.status}`);
+    }
+    status.textContent = "scan complete";
+  } catch (e) {
+    status.textContent = `scan failed: ${e.message || e}`;
+    status.classList.remove("live");
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { status.classList.remove("live"); status.textContent = "idle"; }, 1500);
+    await loadDevices();
+  }
+}
+
+async function bleConnect(address) {
+  const r = await fetch(`/api/ble/connect/${encodeURIComponent(address)}`, { method: "POST" });
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    alert(`Connect failed: ${body.detail || r.status}`);
+  }
+  await loadDevices();
+}
+
+async function bleDisconnect(address) {
+  const r = await fetch(`/api/ble/disconnect/${encodeURIComponent(address)}`, { method: "POST" });
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    alert(`Disconnect failed: ${body.detail || r.status}`);
+  }
+  await loadDevices();
 }
 
 async function loadRuns() {
@@ -449,70 +525,130 @@ async function applyKit() {
   await loadRuns();  // re-evaluate Arm enable state
 }
 
-// Chart state: parallel arrays uPlot expects.
-const series = new Map(); // channel -> number[]
-let xs = [];
-let plot;
+// Per-device chart state. Each device_id gets its own chart card with its
+// own xs / series / uPlot instance + a row of channel toggles.
+const charts = new Map();   // device_id -> ChartState
+const deviceLabels = new Map();  // device_id -> friendly name (from /api/devices)
 // Set when a run starts (first sample's t). Display x = sample.t - tOffset.
 // null means "live monitor mode" — show the raw stream timestamp.
 let tOffset = null;
 
-function ensurePlot() {
-  if (plot) return;
-  const opts = {
-    width: document.getElementById("chart").clientWidth,
-    height: 320,
-    scales: { x: { time: false } },
-    axes: [{ label: "t (s)" }, { label: "value" }],
-    series: [{}],
-  };
-  plot = new uPlot(opts, [[]], document.getElementById("chart"));
-  window.addEventListener("resize", () =>
-    plot.setSize({ width: document.getElementById("chart").clientWidth, height: 320 }));
-}
-
 // Lab-notebook palette: deep teal, warm rust, moss, brass, plum, slate.
 const COLORS = ["#0c4a48", "#9a3a2a", "#316e3c", "#b9863c", "#5a3f6e", "#3a4a5e"];
-
-function ensureSeries(channel) {
-  if (series.has(channel)) return;
-  series.set(channel, new Array(xs.length).fill(null));
-  const idx = series.size;
-  plot.addSeries({ label: channel, stroke: COLORS[(idx - 1) % COLORS.length], width: 2 }, idx);
-}
 
 // Raw event channels (e.g. "gate_A_break_us") use scales orders of magnitude
 // different from the derived physics quantities, so they'd swamp the chart.
 // They're still recorded to CSV server-side; we just don't plot them.
 const RAW_CHANNEL_RE = /_(?:us|raw|ns|ms)$/;
 
+function chartTitleFor(deviceId) {
+  return deviceLabels.get(deviceId) || deviceId;
+}
+
+function ensureChart(deviceId) {
+  let c = charts.get(deviceId);
+  if (c) return c;
+
+  const card = el("div", { class: "chart-card" });
+  const titleEl = el("span", { class: "chart-card-title", text: chartTitleFor(deviceId) });
+  const metaEl  = el("span", { class: "chart-card-meta", text: deviceId });
+  card.appendChild(el("div", { class: "chart-card-head" }, [titleEl, metaEl]));
+  const togglesEl = el("div", { class: "chart-toggles" });
+  card.appendChild(togglesEl);
+  const plotMount = el("div");
+  card.appendChild(plotMount);
+
+  document.getElementById("charts").appendChild(card);
+  document.getElementById("charts-empty").style.display = "none";
+
+  const opts = {
+    width: plotMount.clientWidth || 800,
+    height: 240,
+    scales: { x: { time: false } },
+    axes: [{ label: "t (s)" }, { label: "value" }],
+    series: [{}],
+    legend: { show: true, live: false },
+  };
+  const plot = new uPlot(opts, [[]], plotMount);
+  const onResize = () => plot.setSize({ width: plotMount.clientWidth, height: 240 });
+  window.addEventListener("resize", onResize);
+
+  c = {
+    deviceId,
+    card, titleEl, metaEl, togglesEl, plotMount,
+    plot,
+    xs: [],
+    series: new Map(),       // channel -> { data: number[], visible: boolean, color: string, toggleEl, swatchEl }
+    onResize,
+  };
+  charts.set(deviceId, c);
+  return c;
+}
+
+function ensureSeries(c, channel) {
+  if (c.series.has(channel)) return c.series.get(channel);
+  const color = COLORS[c.series.size % COLORS.length];
+  const data = new Array(c.xs.length).fill(null);
+  const idx = c.series.size + 1;  // 0 is x-axis
+  c.plot.addSeries({ label: channel, stroke: color, width: 2 }, idx);
+
+  // Build the toggle UI for this channel.
+  const swatch = el("span", { class: "swatch" });
+  swatch.style.background = color;
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = true;
+  const labelEl = el("label", { class: "chart-toggle" }, [
+    input, swatch, document.createTextNode(channel),
+  ]);
+  input.addEventListener("change", () => {
+    const s = c.series.get(channel);
+    s.visible = input.checked;
+    labelEl.classList.toggle("off", !input.checked);
+    c.plot.setSeries(idx, { show: input.checked });
+  });
+  c.togglesEl.appendChild(labelEl);
+
+  const entry = { data, visible: true, color, idx, toggleEl: labelEl, swatchEl: swatch };
+  c.series.set(channel, entry);
+  return entry;
+}
+
 function pushSample(s) {
   if (RAW_CHANNEL_RE.test(s.channel)) return;
-  ensurePlot();
-  ensureSeries(s.channel);
+  const c = ensureChart(s.device_id);
+  ensureSeries(c, s.channel);
   // If a run is active, anchor t=0 to the first sample we receive after Arm.
   if (tOffset !== null && tOffset === Infinity) tOffset = s.t;
   const x = tOffset != null ? s.t - tOffset : s.t;
-  if (xs.length === 0 || x > xs[xs.length - 1]) {
-    xs.push(x);
-    for (const arr of series.values()) arr.push(null);
-  }
-  const arr = series.get(s.channel);
-  arr[arr.length - 1] = s.value;
 
-  if (xs.length > MAX_POINTS) {
-    const drop = xs.length - MAX_POINTS;
-    xs = xs.slice(drop);
-    for (const [k, v] of series) series.set(k, v.slice(drop));
+  if (c.xs.length === 0 || x > c.xs[c.xs.length - 1]) {
+    c.xs.push(x);
+    for (const entry of c.series.values()) entry.data.push(null);
+  }
+  c.series.get(s.channel).data[c.series.get(s.channel).data.length - 1] = s.value;
+
+  if (c.xs.length > MAX_POINTS) {
+    const drop = c.xs.length - MAX_POINTS;
+    c.xs = c.xs.slice(drop);
+    for (const entry of c.series.values()) entry.data = entry.data.slice(drop);
   }
 
-  plot.setData([xs, ...Array.from(series.values())]);
+  c.plot.setData([c.xs, ...Array.from(c.series.values()).map(e => e.data)]);
 }
 
 function clearChart() {
-  xs = [];
-  for (const k of series.keys()) series.set(k, []);
-  if (plot) plot.setData([xs, ...Array.from(series.values())]);
+  for (const c of charts.values()) {
+    c.xs = [];
+    for (const entry of c.series.values()) entry.data = [];
+    c.plot.setData([c.xs, ...Array.from(c.series.values()).map(e => e.data)]);
+  }
+}
+
+function refreshChartTitles() {
+  for (const c of charts.values()) {
+    c.titleEl.textContent = chartTitleFor(c.deviceId);
+  }
 }
 
 function connectWS() {
@@ -547,6 +683,11 @@ document.getElementById("arm").addEventListener("click", async () => {
 });
 
 document.getElementById("kit-apply").addEventListener("click", applyKit);
+document.getElementById("ble-scan").addEventListener("click", bleScan);
+
+// Refresh device list every 2s so connection state stays fresh during
+// connect/disconnect transitions and as samples accumulate.
+setInterval(() => { loadDevices().catch(() => {}); }, 2000);
 
 document.getElementById("stop").addEventListener("click", async () => {
   await api("/api/stop", { method: "POST" });
@@ -568,7 +709,6 @@ document.getElementById("delete-all").addEventListener("click", async () => {
 });
 
 (async function init() {
-  ensurePlot();
   await loadDevices();
   await loadKits();
   await loadRuns();

@@ -34,9 +34,12 @@ def _broadcast_payload(s: Sample) -> dict:
 
 
 class Hub:
-    """Owns the sensor source, run store, the active kit, and live subscribers."""
+    """Owns the sample fan-out (CSV + WebSocket), run store, kits, and the
+    BLE manager. Optionally also owns a single internal `source` (mock or
+    legacy single-device adapter) that pumps via async iteration.
+    """
 
-    def __init__(self, source: SensorSource):
+    def __init__(self, source: SensorSource | None = None):
         self.source = source
         self.runs = RunStore()
         self.lab_guides = LabGuideStore()
@@ -45,6 +48,9 @@ class Hub:
         self.active_kit_params: dict = {}
         self._subscribers: set[asyncio.Queue[dict]] = set()
         self._task: asyncio.Task | None = None
+        # The BLE manager streams via callback into self.dispatch.
+        from .ble_manager import BLEManager
+        self.ble = BLEManager(dispatch=self.dispatch)
 
     @property
     def active_kit(self) -> Kit | None:
@@ -58,7 +64,8 @@ class Hub:
         self.active_kit_params = dict(params)
 
     async def start(self) -> None:
-        self._task = asyncio.create_task(self._pump())
+        if self.source is not None:
+            self._task = asyncio.create_task(self._pump())
 
     async def stop(self) -> None:
         if self._task:
@@ -67,16 +74,23 @@ class Hub:
                 await self._task
             except asyncio.CancelledError:
                 pass
+        await self.ble.shutdown()
 
     async def _pump(self) -> None:
         async for sample in self.source.stream():
-            self._dispatch(sample)
-            kit = self.active_kit
-            if kit is not None:
-                for derived in kit.derive(sample):
-                    self._dispatch(derived)
+            self.dispatch(sample)
 
-    def _dispatch(self, sample: Sample) -> None:
+    def dispatch(self, sample: Sample) -> None:
+        """Receive one sample (raw from any source). Persist if a run is
+        active, fan out over WebSocket, then run kit derivation and
+        recurse on each derived sample."""
+        self._emit(sample)
+        kit = self.active_kit
+        if kit is not None:
+            for derived in kit.derive(sample):
+                self._emit(derived)
+
+    def _emit(self, sample: Sample) -> None:
         if self.runs.active is not None:
             self.runs.write(sample)
         payload = _broadcast_payload(sample)
@@ -94,19 +108,29 @@ class Hub:
         self._subscribers.discard(q)
 
 
-def _build_sensor() -> SensorSource:
-    """Pick the mock sensor based on LK_MOCK env var.
+def _build_sensor() -> SensorSource | None:
+    """Pick the internal sensor source based on the LK_SENSOR env var.
 
-    LK_MOCK=imu        -> MockIMUSensor (5 channels, 50 Hz)
-    LK_MOCK=photogate  -> MockPhotogateSensor (default)
-    LK_MOCK=sine       -> MockSensor (legacy sine-wave smoke test)
+    LK_SENSOR=imu        -> MockIMUSensor (5 channels, 50 Hz)
+    LK_SENSOR=photogate  -> MockPhotogateSensor
+    LK_SENSOR=sine       -> MockSensor (sine smoke test)
+    LK_SENSOR=imu_real   -> single-device BLE adapter (legacy; auto-connects
+                            to IMU_Module without UI control)
+
+    Default (unset) -> None: no internal source. The BLE manager is the
+    only data path; users discover and connect ESP32s from the UI.
     """
-    choice = os.environ.get("LK_MOCK", "photogate").strip().lower()
-    if choice == "imu":
+    raw = os.environ.get("LK_SENSOR", os.environ.get("LK_MOCK", "")).strip().lower()
+    if raw == "imu":
         return MockIMUSensor()
-    if choice == "sine":
+    if raw == "photogate":
+        return MockPhotogateSensor()
+    if raw == "sine":
         return MockSensor()
-    return MockPhotogateSensor()
+    if raw == "imu_real":
+        from .ble_sensors import BLEIMUSensor
+        return BLEIMUSensor()
+    return None
 
 
 @asynccontextmanager
@@ -131,11 +155,53 @@ async def index() -> HTMLResponse:
 
 @app.get("/api/devices")
 async def devices():
+    """Unified view: any internal source's devices PLUS all BLE manager
+    devices (scanned/connecting/connected). The UI uses this to render the
+    Devices section regardless of mode."""
     hub: Hub = app.state.hub
-    return [
-        {"device_id": d.device_id, "name": d.name, "rssi": d.rssi, "connected": d.connected}
-        for d in hub.source.devices()
-    ]
+    out: list[dict] = []
+    if hub.source is not None:
+        for d in hub.source.devices():
+            out.append({
+                "address": d.device_id,
+                "name": d.name,
+                "rssi": d.rssi,
+                "connected": d.connected,
+                "connecting": False,
+                "profile": "internal",
+                "samples": None,
+                "error": None,
+                "internal": True,
+            })
+    out.extend({**s, "internal": False} for s in hub.ble.state())
+    return out
+
+
+@app.post("/api/ble/scan")
+async def ble_scan():
+    hub: Hub = app.state.hub
+    try:
+        return await hub.ble.scan()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.post("/api/ble/connect/{address}")
+async def ble_connect(address: str) -> dict:
+    hub: Hub = app.state.hub
+    try:
+        return await hub.ble.connect(address)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/ble/disconnect/{address}")
+async def ble_disconnect(address: str) -> dict:
+    hub: Hub = app.state.hub
+    try:
+        return await hub.ble.disconnect(address)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/api/kits")
