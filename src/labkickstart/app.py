@@ -21,7 +21,7 @@ from .lab_guides import (
     PDFTooLargeError,
     generate_and_save,
 )
-from .runs import RunStore
+from .runs import ActiveTrigger, RunStore
 from .sensors import MockIMUSensor, MockPhotogateSensor, MockToFSensor, Sample, SensorSource
 
 load_dotenv()
@@ -276,14 +276,40 @@ async def list_runs() -> dict:
 @app.post("/api/arm")
 async def arm(payload: dict) -> dict:
     hub: Hub = app.state.hub
-    if hub.active_kit is None:
+    kit = hub.active_kit
+    if kit is None:
         raise HTTPException(status_code=409, detail="select a kit before arming")
     name = (payload or {}).get("name", "run")
+    triggers = _build_active_triggers(kit, (payload or {}).get("triggers") or [])
     try:
-        run = hub.runs.start(name)
+        run = hub.runs.start(name, triggers=triggers)
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
     return run.to_json()
+
+
+def _build_active_triggers(kit: Kit, requested: list[dict]) -> list[ActiveTrigger]:
+    """Validate the client's trigger selections against the kit's available
+    triggers and convert to ActiveTrigger instances. Unknown ids -> 400."""
+    by_id = {t.id: t for t in kit.info.triggers}
+    out: list[ActiveTrigger] = []
+    for r in requested:
+        tid = r.get("id")
+        spec = by_id.get(tid)
+        if spec is None:
+            raise HTTPException(status_code=400, detail=f"unknown trigger: {tid!r}")
+        try:
+            threshold = float(r.get("threshold", spec.default_value))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400,
+                                detail=f"trigger {tid}: threshold must be a number")
+        out.append(ActiveTrigger(
+            trigger_id=spec.id,
+            channel=spec.channel,
+            direction=spec.direction,
+            threshold=threshold,
+        ))
+    return out
 
 
 @app.post("/api/stop")

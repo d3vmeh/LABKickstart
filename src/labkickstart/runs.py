@@ -2,14 +2,38 @@ from __future__ import annotations
 
 import csv
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
 
 from .sensors import Sample
 
 DATA_DIR = Path("data/runs")
+
+
+@dataclass
+class ActiveTrigger:
+    """A trigger configured for the currently active run. Fires when a
+    sample on `channel` crosses `threshold` in the configured direction."""
+    trigger_id: str
+    channel: str
+    direction: str        # "below" | "above"
+    threshold: float
+
+    def matches(self, sample: Sample) -> bool:
+        if sample.channel != self.channel:
+            return False
+        if self.direction == "below":
+            return sample.value <= self.threshold
+        return sample.value >= self.threshold
+
+    def to_json(self) -> dict:
+        return {
+            "trigger_id": self.trigger_id,
+            "channel": self.channel,
+            "direction": self.direction,
+            "threshold": self.threshold,
+        }
 
 
 @dataclass
@@ -19,6 +43,8 @@ class Run:
     started_at: float
     ended_at: float | None
     csv_path: str
+    triggers: list[ActiveTrigger] = field(default_factory=list)
+    ended_reason: str | None = None        # e.g. "trigger:auto_stop_below"
 
     def to_json(self) -> dict:
         d = asdict(self)
@@ -40,7 +66,7 @@ class RunStore:
     def active(self) -> Run | None:
         return self._active
 
-    def start(self, name: str) -> Run:
+    def start(self, name: str, triggers: list[ActiveTrigger] | None = None) -> Run:
         if self._active is not None:
             raise RuntimeError("a run is already active")
         run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -55,18 +81,27 @@ class RunStore:
             started_at=time.time(),
             ended_at=None,
             csv_path=str(csv_path),
+            triggers=list(triggers or []),
         )
         return self._active
 
     def write(self, sample: Sample) -> None:
-        if self._writer is None:
+        if self._writer is None or self._active is None:
             return
         self._writer.writerow([f"{sample.t:.6f}", sample.device_id, sample.channel, sample.value])
+        # After persisting the sample, see if any trigger fires on it. The
+        # triggering row is the last entry in the CSV - clean stop point.
+        for trig in self._active.triggers:
+            if trig.matches(sample):
+                self.stop(reason=f"trigger:{trig.trigger_id}")
+                return
 
-    def stop(self) -> Run | None:
+    def stop(self, reason: str | None = None) -> Run | None:
         if self._active is None:
             return None
         self._active.ended_at = time.time()
+        if reason is not None:
+            self._active.ended_reason = reason
         if self._fh:
             self._fh.flush()
             self._fh.close()
