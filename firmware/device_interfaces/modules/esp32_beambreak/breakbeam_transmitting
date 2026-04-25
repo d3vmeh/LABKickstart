@@ -1,0 +1,109 @@
+#include <Arduino.h>
+
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLE2902.h>
+
+
+#define SERVICE_UUID      "f30c13bf-c618-424d-aeb6-d035b933750f"
+#define BEAMBREAK_UUID    "7c2b6f3a-4a8c-4d24-8f8b-32e2a5c76f10"
+
+#define BLE_DEVICE_NAME   "BEAMBREAK_Module"
+
+BLECharacteristic* pBeamCharacteristic;
+
+const int BEAM_PIN = 4;
+
+const uint8_t GATE_ID = 1;
+
+
+struct __attribute__((packed)) BeamBreakData {
+  uint8_t gate_id;
+  uint8_t state;          // 1 = BLOCKED, 0 = CLEAR
+  uint32_t timestamp_us;  // micros()
+};
+
+int lastRawState = -1;
+unsigned long lastEventTimeUs = 0;
+
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  Serial.println();
+  Serial.println("Starting ESP32-S3 Beam Break BLE transmitter...");
+
+  pinMode(BEAM_PIN, INPUT_PULLUP);
+
+  lastRawState = digitalRead(BEAM_PIN);
+
+  Serial.print("Initial raw state: ");
+  Serial.println(lastRawState);
+
+  if (lastRawState == BLOCKED_LEVEL) {
+    Serial.println("Initial interpreted state: BLOCKED");
+  } else {
+    Serial.println("Initial interpreted state: CLEAR");
+  }
+
+  // Start BLE
+  BLEDevice::init(BLE_DEVICE_NAME);
+
+  BLEServer* pServer = BLEDevice::createServer();
+  BLEService* pService = pServer->createService(SERVICE_UUID);
+
+  pBeamCharacteristic = pService->createCharacteristic(
+    BEAMBREAK_UUID,
+    BLECharacteristic::PROPERTY_NOTIFY
+  );
+
+  pBeamCharacteristic->addDescriptor(new BLE2902());
+
+  pService->start();
+  pServer->getAdvertising()->start();
+
+  Serial.print("BLE advertising started as: ");
+  Serial.println(BLE_DEVICE_NAME);
+  Serial.print("Beam break characteristic UUID: ");
+  Serial.println(BEAMBREAK_UUID);
+}
+
+
+
+void loop() {
+  int rawState = digitalRead(BEAM_PIN);
+  unsigned long nowUs = micros();
+
+  // Only send when state changes
+  if (rawState != lastRawState) {
+    // Simple debounce
+    if (nowUs - lastEventTimeUs < DEBOUNCE_US) {
+      return;
+    }
+
+    bool blocked = (rawState == BLOCKED_LEVEL);
+
+    BeamBreakData data;
+    data.gate_id = GATE_ID;
+    data.state = blocked ? 1 : 0;
+    data.timestamp_us = nowUs;
+
+    pBeamCharacteristic->setValue((uint8_t*)&data, sizeof(data));
+    pBeamCharacteristic->notify();
+
+    Serial.print("Gate ");
+    Serial.print(data.gate_id);
+    Serial.print(" raw=");
+    Serial.print(rawState);
+    Serial.print(" state=");
+    Serial.print(blocked ? "BLOCKED" : "CLEAR");
+    Serial.print(" timestamp_us=");
+    Serial.println(data.timestamp_us);
+
+    lastRawState = rawState;
+    lastEventTimeUs = nowUs;
+  }
+
+  delay(1);
+}
