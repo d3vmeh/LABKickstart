@@ -2,16 +2,29 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse
+from dotenv import load_dotenv
+from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .kits import Kit, build_registry
+from .lab_guides import (
+    LabGuideStore,
+    LLMCallError,
+    LLMConfigError,
+    PDFEmptyTextError,
+    PDFInvalidError,
+    PDFTooLargeError,
+    generate_and_save,
+)
 from .runs import RunStore
 from .sensors import MockPhotogateSensor, MockSensor, Sample, SensorSource
+
+load_dotenv()  # picks up .env if present; no-op otherwise
 
 STATIC = Path(__file__).parent / "static"
 
@@ -26,6 +39,7 @@ class Hub:
     def __init__(self, source: SensorSource):
         self.source = source
         self.runs = RunStore()
+        self.lab_guides = LabGuideStore()
         self.kits: dict[str, Kit] = build_registry()
         self.active_kit_id: str | None = None
         self.active_kit_params: dict = {}
@@ -135,6 +149,50 @@ async def set_kit(payload: dict) -> dict:
     except (KeyError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"id": hub.active_kit_id, "params": hub.active_kit_params}
+
+
+@app.get("/api/kits/{kit_id}/lab_guide")
+async def get_lab_guide(kit_id: str) -> dict:
+    hub: Hub = app.state.hub
+    if kit_id not in hub.kits:
+        raise HTTPException(status_code=404, detail="unknown kit")
+    guide = hub.lab_guides.get(kit_id)
+    if guide is None:
+        raise HTTPException(status_code=404, detail="no guide uploaded yet")
+    return guide
+
+
+@app.post("/api/kits/{kit_id}/lab_guide")
+async def upload_lab_guide(kit_id: str, file: UploadFile = File(...)) -> dict:
+    hub: Hub = app.state.hub
+    if kit_id not in hub.kits:
+        raise HTTPException(status_code=400, detail="unknown kit")
+    pdf_bytes = await file.read()
+    try:
+        return await generate_and_save(
+            kit_id=kit_id,
+            pdf_bytes=pdf_bytes,
+            kit_info=hub.kits[kit_id].info,
+            api_key=os.environ.get("OPENAI_API_KEY"),
+            store=hub.lab_guides,
+        )
+    except PDFTooLargeError as e:
+        raise HTTPException(status_code=413, detail=str(e))
+    except (PDFInvalidError, PDFEmptyTextError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except LLMConfigError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except LLMCallError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.delete("/api/kits/{kit_id}/lab_guide", status_code=204)
+async def delete_lab_guide(kit_id: str) -> Response:
+    hub: Hub = app.state.hub
+    if kit_id not in hub.kits:
+        raise HTTPException(status_code=404, detail="unknown kit")
+    hub.lab_guides.delete(kit_id)
+    return Response(status_code=204)
 
 
 @app.get("/api/runs")

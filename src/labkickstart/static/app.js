@@ -117,6 +117,7 @@ function renderKitPicker() {
   const kit = kitState.available.find(k => k.id === kitState.selectedId);
   document.getElementById("kit-desc").textContent = kit?.description ?? "";
   renderKitDiagrams(kit?.diagrams ?? []);
+  loadLabGuide();
 }
 
 function renderKitDiagrams(diagrams) {
@@ -175,6 +176,164 @@ function renderKitStatus() {
     status.textContent = "no kit selected";
     status.classList.remove("live");
   }
+}
+
+// ---------- Lab guide ----------
+const labGuideState = {
+  kitId: null,
+  guide: null,
+  busy: false,
+  error: null,
+};
+
+async function loadLabGuide() {
+  const kitId = kitState.selectedId;
+  if (!kitId) return;
+  labGuideState.kitId = kitId;
+  labGuideState.error = null;
+  labGuideState.busy = false;
+  try {
+    const r = await fetch(`/api/kits/${encodeURIComponent(kitId)}/lab_guide`);
+    if (r.status === 404) {
+      labGuideState.guide = null;
+    } else if (r.ok) {
+      labGuideState.guide = await r.json();
+    } else {
+      const body = await r.json().catch(() => ({}));
+      labGuideState.guide = null;
+      labGuideState.error = body.detail || `HTTP ${r.status}`;
+    }
+  } catch (e) {
+    labGuideState.guide = null;
+    labGuideState.error = String(e);
+  }
+  renderLabGuide();
+}
+
+async function uploadLabGuide(file) {
+  if (!labGuideState.kitId) return;
+  labGuideState.busy = true;
+  labGuideState.error = null;
+  renderLabGuide();
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await fetch(
+      `/api/kits/${encodeURIComponent(labGuideState.kitId)}/lab_guide`,
+      { method: "POST", body: fd },
+    );
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      throw new Error(body.detail || `HTTP ${r.status}`);
+    }
+    labGuideState.guide = await r.json();
+  } catch (e) {
+    labGuideState.error = String(e.message || e);
+  } finally {
+    labGuideState.busy = false;
+    renderLabGuide();
+  }
+}
+
+function renderLabGuide() {
+  const host = document.getElementById("kit-lab-guide");
+  host.replaceChildren();
+
+  const summary = el("summary", { text: "Lab guide" });
+  const body = el("div", { class: "diagram-body" });
+  const det = document.createElement("details");
+  det.className = "diagram";
+  if (labGuideState.guide || labGuideState.busy || labGuideState.error) {
+    det.open = true;
+  }
+  det.appendChild(summary);
+  det.appendChild(body);
+  host.appendChild(det);
+
+  if (labGuideState.busy) {
+    body.appendChild(el("div", { class: "lg-busy", text: "Generating with gpt-4o-mini…" }));
+    return;
+  }
+  if (labGuideState.error) {
+    body.appendChild(el("div", { class: "lg-error", text: labGuideState.error }));
+    body.appendChild(buildUploadRow("Try again"));
+    return;
+  }
+  if (!labGuideState.guide) {
+    body.appendChild(el("div", { class: "lg-empty", text: "No guide uploaded yet." }));
+    body.appendChild(buildUploadRow("Upload PDF"));
+    return;
+  }
+  // Loaded state: materials + steps
+  const g = labGuideState.guide;
+  if (Array.isArray(g.materials) && g.materials.length) {
+    const sec = el("div", { class: "lg-section" }, [el("h4", { text: "Materials" })]);
+    const ul = el("ul", { class: "lg-materials" });
+    for (const m of g.materials) {
+      const parts = [
+        document.createTextNode(m.item),
+      ];
+      if (m.quantity && m.quantity > 1) {
+        parts.push(document.createTextNode(" "));
+        parts.push(el("span", { class: "qty", text: `× ${m.quantity}` }));
+      }
+      if (m.note) {
+        parts.push(document.createTextNode(" — "));
+        parts.push(el("span", { class: "note", text: m.note }));
+      }
+      ul.appendChild(el("li", {}, parts));
+    }
+    sec.appendChild(ul);
+    body.appendChild(sec);
+  }
+  if (Array.isArray(g.steps) && g.steps.length) {
+    const sec = el("div", { class: "lg-section" }, [el("h4", { text: "Steps" })]);
+    const stack = el("div", { class: "lg-steps" });
+    for (const s of g.steps) {
+      const card = el("div", { class: "lg-step" });
+      card.appendChild(el("div", { class: "lg-step-action" }, [
+        el("span", { class: "n", text: `${s.n}.` }),
+        el("span", { text: s.action }),
+      ]));
+      const why = document.createElement("details");
+      why.appendChild(el("summary"));
+      why.appendChild(el("div", { class: "lg-reason", text: s.reason }));
+      card.appendChild(why);
+      stack.appendChild(card);
+    }
+    sec.appendChild(stack);
+    body.appendChild(sec);
+  }
+  body.appendChild(buildUploadRow("Replace", { compact: true }));
+}
+
+function buildUploadRow(buttonLabel, opts = {}) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "application/pdf,.pdf";
+  input.style.display = "none";
+  input.onchange = () => {
+    const f = input.files && input.files[0];
+    if (f) uploadLabGuide(f);
+  };
+
+  const link = document.createElement("a");
+  link.textContent = buttonLabel;
+  link.onclick = (e) => { e.preventDefault(); input.click(); };
+
+  const row = el("div", { class: "lg-replace" });
+  if (opts.compact) {
+    row.appendChild(link);
+  } else {
+    const btn = document.createElement("button");
+    btn.className = "primary";
+    btn.textContent = buttonLabel;
+    btn.onclick = () => input.click();
+    row.appendChild(btn);
+    row.appendChild(el("span", { text: "Generates with gpt-4o-mini, takes ~10 s." }));
+  }
+  row.appendChild(input);
+  return row;
 }
 
 async function applyKit() {
