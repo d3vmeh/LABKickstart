@@ -221,7 +221,7 @@ class ToFKit:
                 channel="distance_mm",
                 unit="mm",
                 direction="below",
-                default_value=50.0,
+                default_value=150.0,
             ),
         ],
     )
