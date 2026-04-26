@@ -29,7 +29,7 @@ Decoder = Callable[[bytes], Iterable[tuple[str, float]]]
 
 @dataclass(frozen=True)
 class Profile:
-    name: str                                            # device-name match
+    name: str                                            # exact device-name match
     service_uuid: str
     char_uuid: str | None                                # None = auto-discover first NOTIFY
     # Per-connection decoder factory. Called once at connect time so the
@@ -37,6 +37,9 @@ class Profile:
     # leaking across reconnections.
     decoder: Callable[[], Decoder]
     description: str = ""
+    # Optional prefix: when set, any advertised name starting with this
+    # also matches this profile (e.g. BEAMBREAK_Module_2 -> BEAMBREAK_Module).
+    name_prefix: str | None = None
 
 
 def _stateless(decoder: Decoder) -> Callable[[], Decoder]:
@@ -74,34 +77,46 @@ def _decode_tof_distance(data: bytes) -> Iterable[tuple[str, float]]:
 
 
 def _make_beambreak_decoder() -> Decoder:
-    """Stateful decoder for the BEAMBREAK_Module: pairs each BLOCKED with its
-    next CLEAR per gate, emits `gate_A_break_us` / `gate_B_break_us` with the
-    duration in microseconds. PhotogateKit consumes those channels directly.
+    """Stateful decoder for the BEAMBREAK_Module. Pairs each BLOCKED with
+    its next CLEAR per gate and emits `gate_A_break_us` / `gate_B_break_us`
+    with the duration in microseconds.
 
-    Wire format (per BLE notification): 6 bytes packed `<BBI`:
-        gate_id (uint8, 1 or 2), state (uint8, 1=BLOCKED 0=CLEAR), timestamp_us (uint32)
+    Wire format (per BLE notification): 2 bytes packed `<BB`:
+        gate_id (uint8, 1 or 2), state (uint8, 1=BLOCKED 0=CLEAR)
+
+    The firmware no longer ships a timestamp, so we use Pi-side
+    `time.monotonic()` at notification arrival. To suppress the resulting
+    BLE-batching / sensor-switching noise, durations outside a plausible
+    classroom range are dropped:
+
+      < 5 ms   -> would imply >10 m/s with a 5 cm flag; almost certainly
+                  a sensor flicker or two BLE notifications arriving in
+                  the same packet.
+      > 60 s   -> the matching CLEAR was probably missed; the next
+                  BLOCKED reset would otherwise pair with stale state.
     """
-    last_blocked_us: dict[int, int] = {}
+    MIN_BREAK_US = 5_000
+    MAX_BREAK_US = 60_000_000
+    last_blocked_t: dict[int, float] = {}
 
     def decode(data: bytes):
-        if len(data) != 6:
+        if len(data) != 2:
             return ()
-        gate_id, state, ts_us = struct.unpack("<BBI", data)
+        gate_id, state = struct.unpack("<BB", data)
         label = {1: "A", 2: "B"}.get(gate_id)
         if label is None:
             return ()
+        now = time.monotonic()
         if state == 1:
-            # BLOCKED: remember when, wait for CLEAR.
-            last_blocked_us[gate_id] = ts_us
+            last_blocked_t[gate_id] = now
             return ()
-        # CLEAR: emit duration if we saw the matching BLOCKED.
-        start = last_blocked_us.pop(gate_id, None)
+        start = last_blocked_t.pop(gate_id, None)
         if start is None:
             return ()
-        dur = ts_us - start
-        if dur < 0:
-            dur += 2 ** 32  # micros() overflow (~71 min)
-        return ((f"gate_{label}_break_us", float(dur)),)
+        dur_us = (now - start) * 1_000_000.0
+        if dur_us < MIN_BREAK_US or dur_us > MAX_BREAK_US:
+            return ()
+        return ((f"gate_{label}_break_us", dur_us),)
 
     return decode
 
@@ -116,10 +131,11 @@ PROFILES: dict[str, Profile] = {
     ),
     "BEAMBREAK_Module": Profile(
         name="BEAMBREAK_Module",
+        name_prefix="BEAMBREAK_Module",
         service_uuid="f30c13bf-c618-424d-aeb6-d035b933750f",
         char_uuid="7c2b6f3a-4a8c-4d24-8f8b-32e2a5c76f10",
         decoder=_make_beambreak_decoder,
-        description="Two-gate photogate: pairs BLOCKED/CLEAR into gate_A/B_break_us",
+        description="Photogate: pairs BLOCKED/CLEAR into gate_A/B_break_us",
     ),
     "TOF_Module": Profile(
         name="TOF_Module",
@@ -129,6 +145,17 @@ PROFILES: dict[str, Profile] = {
         description="VL53L0X distance sensor: distance_mm",
     ),
 }
+
+
+def _profile_id_for_name(advertised_name: str) -> str | None:
+    """Return the PROFILES key whose name (or name_prefix) matches the
+    advertised device name, or None if no profile matches."""
+    if advertised_name in PROFILES:
+        return advertised_name
+    for pid, prof in PROFILES.items():
+        if prof.name_prefix and advertised_name.startswith(prof.name_prefix):
+            return pid
+    return None
 
 
 # ---------- State ----------
@@ -194,7 +221,8 @@ class BLEManager:
                      addr, dev.name, adv.rssi, list(adv.service_uuids or []))
         for addr, (dev, adv) in found.items():
             name = dev.name or ""
-            if name not in PROFILES:
+            profile_id = _profile_id_for_name(name)
+            if profile_id is None:
                 # If we'd previously catalogued this address with a name it
                 # no longer matches (e.g. the ESP32 was reflashed), drop the
                 # stale entry so it doesn't keep showing up.
@@ -211,13 +239,13 @@ class BLEManager:
                 # reflashed. Update the metadata so the UI shows the truth.
                 if existing.name != name and not existing.connected:
                     existing.name = name
-                    existing.profile_id = name
+                    existing.profile_id = profile_id
                 if not existing.connected:
                     existing.error = None
             else:
                 self._devices[addr] = DeviceState(
                     address=addr, name=name, rssi=adv.rssi,
-                    profile_id=name, last_seen=now,
+                    profile_id=profile_id, last_seen=now,
                 )
         # Evict stale, idle devices so the list doesn't grow without bound.
         stale_cutoff = now - 60
@@ -307,7 +335,17 @@ class BLEManager:
                             log.warning("[BLE] dispatch error: %s", e)
 
                 char_uuid = profile.char_uuid or self._discover_notify_char(client)
-                await client.start_notify(char_uuid, on_notify)
+                try:
+                    await client.start_notify(char_uuid, on_notify)
+                except Exception as e:
+                    # Char UUID either isn't on this device or wasn't found by
+                    # service discovery. Fall back to the first NOTIFY char.
+                    log.warning(
+                        "[BLE] %s: char %s not found (%s); auto-discovering",
+                        d.name, char_uuid, e,
+                    )
+                    char_uuid = self._discover_notify_char(client)
+                    await client.start_notify(char_uuid, on_notify)
                 d.connected = True
                 d.connecting = False
                 log.info("[BLE] streaming %s", d.name)
