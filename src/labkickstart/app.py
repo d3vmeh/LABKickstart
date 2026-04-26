@@ -169,6 +169,12 @@ async def ble_scan():
         raise HTTPException(status_code=502, detail=str(e))
 
 
+@app.post("/api/ble/forget")
+async def ble_forget() -> dict:
+    hub: Hub = app.state.hub
+    return {"dropped": hub.ble.forget_idle()}
+
+
 @app.post("/api/ble/connect/{address}")
 async def ble_connect(address: str) -> dict:
     hub: Hub = app.state.hub
