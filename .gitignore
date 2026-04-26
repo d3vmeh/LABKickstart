@@ -12,3 +12,5 @@ data/lab_guides/
 dist/
 build/
 .claude/
+docs/
+
