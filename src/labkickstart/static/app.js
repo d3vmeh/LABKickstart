@@ -753,6 +753,11 @@ document.getElementById("ble-forget").addEventListener("click", async () => {
 // connect/disconnect transitions and as samples accumulate.
 setInterval(() => { loadDevices().catch(() => {}); }, 2000);
 
+// Backstop for run state: the WS pushes a `run_state` event the instant
+// a trigger fires, but if that event ever drops (slow client, queue
+// overflow), we resync on a slower 5s timer. Belt + suspenders.
+setInterval(() => { loadRuns().catch(() => {}); }, 5000);
+
 document.getElementById("stop").addEventListener("click", async () => {
   await api("/api/stop", { method: "POST" });
   tOffset = null;  // back to monitor mode
