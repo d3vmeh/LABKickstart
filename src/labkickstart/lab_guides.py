@@ -251,6 +251,10 @@ async def generate_and_save(
     pdf_bytes: bytes | None = None,
     text: str | None = None,
 ) -> dict:
+    """Both PDF extraction (pypdf, CPU-bound) and the LLM call (sync OpenAI
+    SDK) are dispatched via `asyncio.to_thread` so they don't block the
+    event loop while the lab guide generates (~10 seconds typical)."""
+    import asyncio
     """Generate a guide from either a PDF or pre-extracted text.
 
     Exactly one of `pdf_bytes` / `text` should be supplied. If a PDF is
@@ -260,7 +264,7 @@ async def generate_and_save(
     if not api_key:
         raise LLMConfigError("OPENAI_API_KEY is not configured on the server")
     if pdf_bytes is not None:
-        body_text = extract_pdf_text(pdf_bytes)   # raises PDF*Error
+        body_text = await asyncio.to_thread(extract_pdf_text, pdf_bytes)
     elif text is not None:
         body_text = text.strip()
         if not body_text:
@@ -273,7 +277,7 @@ async def generate_and_save(
     last_error: Exception | None = None
     for attempt in (1, 2):                        # one retry
         try:
-            generated = _call_openai(api_key, prompt)
+            generated = await asyncio.to_thread(_call_openai, api_key, prompt)
             generated = _validate(generated)
             break
         except LLMCallError as e:
