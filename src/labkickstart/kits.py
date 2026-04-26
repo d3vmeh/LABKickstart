@@ -4,6 +4,8 @@ Pi turns those into physics quantities the student cares about.
 """
 from __future__ import annotations
 
+import math
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Iterable, Protocol
 
@@ -233,6 +235,133 @@ class ToFKit:
         return ()
 
 
+class SHMKit:
+    """Simple harmonic motion of a mass between two springs.
+
+    Subscribes to `distance_mm` (from the ToF below the mass). Detects
+    peaks and troughs in the distance trace, derives oscillation period,
+    amplitude, and angular frequency once per cycle, and predicts the
+    IMU's `accel_z` at every incoming distance sample so the two sensors
+    can be cross-checked visually.
+
+    The IMU's actual `accel_z` is not consumed by this kit — it streams
+    to its own chart card unchanged, with a gravity baseline of about
+    -9.81 m/s² included. Compare the *waveform* (period and amplitude)
+    of the IMU trace and the predicted trace; equal shape means SHM
+    holds and the sensors agree.
+
+    See docs/superpowers/specs/2026-04-25-shm-kit-design.md for the full
+    derivation contract.
+    """
+
+    info = KitInfo(
+        id="shm",
+        name="SHM on springs",
+        description=(
+            "Mass suspended between two springs, oscillating vertically. "
+            "ToF below the mass measures distance; IMU on the mass measures "
+            "vertical acceleration. Computes period, amplitude, and angular "
+            "frequency in real time, and predicts the IMU's accel_z from the "
+            "ToF data so the two sensors can be cross-checked."
+        ),
+        params=[],
+        diagrams=[],
+    )
+
+    PEAK_LOOKBACK = 5                # samples on each side
+    BUFFER_SIZE = 4 * PEAK_LOOKBACK  # bounded
+    MIN_PERIOD_S = 0.05
+    MAX_PERIOD_S = 30.0
+    MAX_AMPLITUDE_MM = 10000.0
+    PERIOD_HISTORY = 3
+
+    def __init__(self) -> None:
+        self._buf: deque[tuple[float, float]] = deque(maxlen=self.BUFFER_SIZE)
+        self._last_peak: tuple[float, float] | None = None        # (t, value)
+        self._last_trough: tuple[float, float] | None = None
+        self._equilibrium_mm: float | None = None
+        self._period_history: deque[float] = deque(maxlen=self.PERIOD_HISTORY)
+        self._omega_smoothed: float | None = None
+
+    def configure(self, params: dict) -> None:
+        return
+
+    def derive(self, sample: Sample) -> Iterable[Sample]:
+        if sample.channel != "distance_mm":
+            return ()
+
+        self._buf.append((sample.t, sample.value))
+
+        emitted: list[Sample] = []
+        N = self.PEAK_LOOKBACK
+
+        # Confirm the candidate at index (len - N - 1): it has N samples after it.
+        if len(self._buf) >= 2 * N + 1:
+            idx = len(self._buf) - N - 1
+            cand_t, cand_v = self._buf[idx]
+            before = [self._buf[i][1] for i in range(idx - N, idx)]
+            after = [self._buf[i][1] for i in range(idx + 1, idx + N + 1)]
+
+            # Strict on the "before" side, non-strict on "after" — breaks the
+            # tie when two adjacent samples straddle the true peak/trough and
+            # land at exactly equal values (common for clean sinusoids).
+            if all(cand_v > b for b in before) and all(cand_v >= a for a in after):
+                self._on_peak(cand_t, cand_v, sample.device_id, emitted)
+            elif all(cand_v < b for b in before) and all(cand_v <= a for a in after):
+                self._on_trough(cand_t, cand_v, sample.device_id, emitted)
+
+        # Per-sample prediction once we have ω and an equilibrium estimate.
+        if self._omega_smoothed is not None and self._equilibrium_mm is not None:
+            displacement_m = (sample.value - self._equilibrium_mm) / 1000.0
+            accel_predicted = -(self._omega_smoothed ** 2) * displacement_m
+            emitted.append(Sample(
+                sample.device_id, sample.t,
+                "accel_z_predicted", accel_predicted,
+            ))
+
+        return emitted
+
+    def _on_peak(self, t: float, v: float, device_id: str, out: list[Sample]) -> None:
+        if self._last_peak is not None:
+            period = t - self._last_peak[0]
+            if self.MIN_PERIOD_S < period < self.MAX_PERIOD_S:
+                out.append(Sample(device_id, t, "period_s", period))
+                out.append(Sample(device_id, t, "omega_rad_s", 2 * math.pi / period))
+                self._period_history.append(period)
+                self._omega_smoothed = self._smoothed_omega()
+        self._last_peak = (t, v)
+        self._update_equilibrium()
+
+    def _on_trough(self, t: float, v: float, device_id: str, out: list[Sample]) -> None:
+        if self._last_peak is not None:
+            amp = (self._last_peak[1] - v) / 2.0
+            if 0.0 < amp < self.MAX_AMPLITUDE_MM:
+                out.append(Sample(device_id, t, "amplitude_mm", amp))
+        self._last_trough = (t, v)
+        self._update_equilibrium()
+
+    def _update_equilibrium(self) -> None:
+        if self._last_peak is not None and self._last_trough is not None:
+            self._equilibrium_mm = (self._last_peak[1] + self._last_trough[1]) / 2.0
+
+    def _smoothed_omega(self) -> float:
+        # Median of the period history (or whatever's available).
+        sorted_p = sorted(self._period_history)
+        n = len(sorted_p)
+        if n == 0:
+            return 0.0
+        if n % 2 == 1:
+            median = sorted_p[n // 2]
+        else:
+            median = (sorted_p[n // 2 - 1] + sorted_p[n // 2]) / 2.0
+        return 2 * math.pi / median
+
+
 # Registry. Add new kits here as classes are written.
 def build_registry() -> dict[str, Kit]:
-    return {"photogate": PhotogateKit(), "imu": IMUKit(), "tof": ToFKit()}
+    return {
+        "photogate": PhotogateKit(),
+        "imu": IMUKit(),
+        "tof": ToFKit(),
+        "shm": SHMKit(),
+    }

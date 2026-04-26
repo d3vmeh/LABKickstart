@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from .sensors import Sample
 
@@ -55,12 +56,26 @@ class Run:
 class RunStore:
     """Owns the active run + CSV writer. Single-run-at-a-time."""
 
-    def __init__(self, data_dir: Path = DATA_DIR):
+    def __init__(
+        self,
+        data_dir: Path = DATA_DIR,
+        on_state_change: Callable[["Run | None"], None] | None = None,
+    ):
         self.data_dir = data_dir
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._active: Run | None = None
         self._fh = None
         self._writer = None
+        # Called whenever the active run starts or stops (including from a
+        # trigger). Lets the Hub push a state-change event over the WS.
+        self._on_state_change = on_state_change
+
+    def _notify(self) -> None:
+        if self._on_state_change is not None:
+            try:
+                self._on_state_change(self._active)
+            except Exception:
+                pass
 
     @property
     def active(self) -> Run | None:
@@ -83,6 +98,7 @@ class RunStore:
             csv_path=str(csv_path),
             triggers=list(triggers or []),
         )
+        self._notify()
         return self._active
 
     def write(self, sample: Sample) -> None:
@@ -109,6 +125,7 @@ class RunStore:
         self._writer = None
         finished = self._active
         self._active = None
+        self._notify()
         return finished
 
     def list(self) -> list[dict]:

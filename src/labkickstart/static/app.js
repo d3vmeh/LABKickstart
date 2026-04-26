@@ -709,7 +709,18 @@ function connectWS() {
     status.classList.remove("live");
     setTimeout(connectWS, 1000);
   };
-  ws.onmessage = (e) => pushSample(JSON.parse(e.data));
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m && m.type === "run_state") {
+      // Server-side run start/stop (including auto-stop trigger fires).
+      // Update the Run UI immediately so we don't have to wait for the
+      // periodic poll. Also refresh history so a just-finished run shows up.
+      setRunUI(m.active);
+      loadRuns().catch(() => {});
+    } else {
+      pushSample(m);
+    }
+  };
 }
 
 document.getElementById("arm").addEventListener("click", async () => {
