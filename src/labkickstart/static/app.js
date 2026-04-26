@@ -733,6 +733,10 @@ document.getElementById("arm").addEventListener("click", async () => {
 
 document.getElementById("kit-apply").addEventListener("click", applyKit);
 document.getElementById("ble-scan").addEventListener("click", bleScan);
+document.getElementById("ble-forget").addEventListener("click", async () => {
+  await fetch("/api/ble/forget", { method: "POST" });
+  await loadDevices();
+});
 
 // Refresh device list every 2s so connection state stays fresh during
 // connect/disconnect transitions and as samples accumulate.

@@ -58,15 +58,17 @@ def _decode_imu(data: bytes) -> Iterable[tuple[str, float]]:
 
 
 def _decode_tof_distance(data: bytes) -> Iterable[tuple[str, float]]:
-    """Decode the TOF_Module's 9-byte packed struct:
-        <f distance_mm, I timestamp_ms, B status (0=valid, 1=invalid)>
+    """Decode the TOF_Module's 5-byte packed struct:
+        <f distance_mm, B status (0=valid, 1=invalid)>
     Invalid readings (out-of-range / sensor error) are dropped so the
     chart isn't polluted with sentinel values like -1.
     """
-    if len(data) != 9:
+    if len(data) != 5:
         return ()
-    distance_mm, _ts_ms, status = struct.unpack("<fIB", data)
-    if status != 0:
+    distance_mm, status = struct.unpack("<fB", data)
+    # Drop firmware-flagged invalid frames AND any negative distance (defensive
+    # in case the firmware ever sends status=0 with the -1 sentinel).
+    if status != 0 or distance_mm < 0:
         return ()
     return (("distance_mm", distance_mm),)
 
@@ -185,15 +187,31 @@ class BLEManager:
         log.info("[BLE] scan start (%.1fs)", self.SCAN_TIMEOUT_S)
         found = await BleakScanner.discover(timeout=self.SCAN_TIMEOUT_S, return_adv=True)
         now = time.time()
-        # Only surface devices whose name matches a known profile.
+        # Diagnostic: log everything visible (named or not) so we can debug
+        # cases where the OS BLE cache reports stale names.
+        for addr, (dev, adv) in found.items():
+            log.info("[BLE]   seen %s  name=%r  rssi=%s  uuids=%s",
+                     addr, dev.name, adv.rssi, list(adv.service_uuids or []))
         for addr, (dev, adv) in found.items():
             name = dev.name or ""
             if name not in PROFILES:
+                # If we'd previously catalogued this address with a name it
+                # no longer matches (e.g. the ESP32 was reflashed), drop the
+                # stale entry so it doesn't keep showing up.
+                stale = self._devices.get(addr)
+                if stale is not None and not stale.connected and not stale.connecting:
+                    if stale.name != name:
+                        self._devices.pop(addr, None)
                 continue
             existing = self._devices.get(addr)
             if existing:
                 existing.rssi = adv.rssi
                 existing.last_seen = now
+                # Same address, different advertised name -> the device was
+                # reflashed. Update the metadata so the UI shows the truth.
+                if existing.name != name and not existing.connected:
+                    existing.name = name
+                    existing.profile_id = name
                 if not existing.connected:
                     existing.error = None
             else:
@@ -223,6 +241,14 @@ class BLEManager:
         task = asyncio.create_task(self._stream_one(address))
         self._tasks[address] = task
         return d.to_json()
+
+    def forget_idle(self) -> int:
+        """Drop all scanned, idle devices from the device list. Connected
+        and connecting entries are preserved. Returns the count dropped."""
+        before = len(self._devices)
+        self._devices = {a: d for a, d in self._devices.items()
+                         if d.connected or d.connecting}
+        return before - len(self._devices)
 
     async def disconnect(self, address: str) -> dict:
         task = self._tasks.get(address)

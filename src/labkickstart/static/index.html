@@ -392,7 +392,10 @@
     <h2>Devices</h2>
     <div class="row" style="justify-content: space-between; margin-bottom: 8px">
       <span id="ble-status" class="status">idle</span>
-      <button id="ble-scan" class="primary">Scan</button>
+      <div class="row" style="gap:8px">
+        <button id="ble-forget" title="Drop scanned, idle devices (use after reflashing an ESP32)">Forget</button>
+        <button id="ble-scan" class="primary">Scan</button>
+      </div>
     </div>
     <table id="devices"><thead><tr><th>Name</th><th>Address</th><th>RSSI</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
   </section>
