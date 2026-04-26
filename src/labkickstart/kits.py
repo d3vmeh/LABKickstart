@@ -142,7 +142,16 @@ class PhotogateKit:
         ch = sample.channel
         if ch == "gate_A_break_us":
             v_A = self._velocity_from_break_us(sample.value)
-            self._pending_A = (sample.t, v_A)
+            # Two A breaks back-to-back: the cart never reached B.
+            # If the previous A was very recent (<200 ms), assume a flag
+            # wobble and keep the FIRST A's timestamp (more accurate edge).
+            # Otherwise replace - the previous pass is stale.
+            if self._pending_A is not None:
+                if sample.t - self._pending_A[0] > 0.2:
+                    self._pending_A = (sample.t, v_A)
+                # else keep the older _pending_A
+            else:
+                self._pending_A = (sample.t, v_A)
             if v_A is not None:
                 yield Sample(sample.device_id, sample.t, "v_A (m/s)", v_A)
         elif ch == "gate_B_break_us":
@@ -284,7 +293,14 @@ class SHMKit:
         self._omega_smoothed: float | None = None
 
     def configure(self, params: dict) -> None:
-        return
+        # Reset all running state so a re-applied kit doesn't pair pre-arm
+        # samples with post-arm ones.
+        self._buf.clear()
+        self._last_peak = None
+        self._last_trough = None
+        self._equilibrium_mm = None
+        self._period_history.clear()
+        self._omega_smoothed = None
 
     def derive(self, sample: Sample) -> Iterable[Sample]:
         if sample.channel != "distance_mm":
