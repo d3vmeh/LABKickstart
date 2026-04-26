@@ -41,7 +41,7 @@ class Hub:
 
     def __init__(self, source: SensorSource | None = None):
         self.source = source
-        self.runs = RunStore()
+        self.runs = RunStore(on_state_change=self._broadcast_run_state)
         self.lab_guides = LabGuideStore()
         self.kits: dict[str, Kit] = build_registry()
         self.active_kit_id: str | None = None
@@ -103,6 +103,22 @@ class Hub:
 
     def unsubscribe(self, q: asyncio.Queue[dict]) -> None:
         self._subscribers.discard(q)
+
+    def _broadcast_run_state(self, active) -> None:
+        """Push a run-state-change event to every WS subscriber so the UI
+        switches from 'recording' to 'idle' immediately when a trigger fires
+        (instead of waiting for the 2 s poll)."""
+        payload = {
+            "type": "run_state",
+            "active": active.to_json() if active is not None else None,
+        }
+        for q in list(self._subscribers):
+            if q.full():
+                continue
+            try:
+                q.put_nowait(payload)
+            except Exception:
+                pass
 
 
 _MOCKS = {
