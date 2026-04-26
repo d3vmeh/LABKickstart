@@ -36,25 +36,25 @@ class ServerCallbacks : public BLEServerCallbacks {
 };
 
 void setup() {
-  Serial.begin(115200);
+  // Serial.begin(115200);
   delay(1000);
 
-  Serial.println();
-  Serial.println("Starting ESP32-S3 Beam Break BLE transmitter...");
+  // Serial.println();
+  // Serial.println("Starting ESP32-S3 Beam Break BLE transmitter...");
 
   pinMode(BEAM_PIN, INPUT_PULLUP);
   pinMode(LED_PIN, OUTPUT);
 
   lastRawState = digitalRead(BEAM_PIN);
 
-  Serial.print("Initial raw state: ");
-  Serial.println(lastRawState);
+  // Serial.print("Initial raw state: ");
+  // Serial.println(lastRawState);
 
-  if (lastRawState == BLOCKED_LEVEL) {
-    Serial.println("Initial interpreted state: BLOCKED");
-  } else {
-    Serial.println("Initial interpreted state: CLEAR");
-  }
+  // if (lastRawState == BLOCKED_LEVEL) {
+  //   Serial.println("Initial interpreted state: BLOCKED");
+  // } else {
+  //   Serial.println("Initial interpreted state: CLEAR");
+  // }
 
   // Start BLE
   BLEDevice::init(BLE_DEVICE_NAME);
@@ -73,10 +73,10 @@ void setup() {
   pService->start();
   pServer->getAdvertising()->start();
 
-  Serial.print("BLE advertising started as: ");
-  Serial.println(BLE_DEVICE_NAME);
-  Serial.print("Beam break characteristic UUID: ");
-  Serial.println(BEAMBREAK_UUID);
+  // Serial.print("BLE advertising started as: ");
+  // Serial.println(BLE_DEVICE_NAME);
+  // Serial.print("Beam break characteristic UUID: ");
+  // Serial.println(BEAMBREAK_UUID);
 }
 
 
@@ -108,19 +108,19 @@ void loop() {
     pBeamCharacteristic->notify();
 
     // debugging statements
-    Serial.print("Gate ");
-    Serial.print(data.gate_id);
-    Serial.print(" raw=");
-    Serial.print(rawState);
-    Serial.print(" state=");
-    Serial.print(blocked ? "BLOCKED" : "CLEAR");
+    // Serial.print("Gate ");
+    // Serial.print(data.gate_id);
+    // Serial.print(" raw=");
+    // Serial.print(rawState);
+    // Serial.print(" state=");
+    // Serial.print(blocked ? "BLOCKED" : "CLEAR");
 
     lastRawState = rawState;
     lastEventTimeUs = nowUs;
 
-    Serial.println();
+    // Serial.println();
   }
 
-  delay(1);
+  // delay(1);
   
 }
