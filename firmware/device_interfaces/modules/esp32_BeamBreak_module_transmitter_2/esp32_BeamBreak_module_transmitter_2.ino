@@ -3,10 +3,10 @@
 #include <BLEServer.h>
 #include <BLE2902.h>
 
-#define SERVICE_UUID      "f30c13bf-c618-424d-aeb6-d035b933750f"
-#define BEAMBREAK_UUID    "7c2b6f3a-4a8c-4d24-8f8b-32e2a5c76f10"
+#define SERVICE_UUID        "a13ebb02-0bce-4cab-a875-2659399c1da3"
+#define BEAMBREAK_UUID      "c650e0f7-e67d-46cf-ba89-4fd287070199"
 
-#define BLE_DEVICE_NAME   "BEAMBREAK_Module"
+#define BLE_DEVICE_NAME   "BEAMBREAK_Module_2"
 
 BLECharacteristic* pBeamCharacteristic;
 
@@ -18,7 +18,7 @@ BLECharacteristic* pBeamCharacteristic;
 
 const int BEAM_PIN = 18;
 
-const uint8_t GATE_ID = 1;
+const uint8_t GATE_ID = 2;
 
 
 struct __attribute__((packed)) BeamBreakData {
@@ -36,7 +36,7 @@ class ServerCallbacks : public BLEServerCallbacks {
 };
 
 void setup() {
-  // Serial.begin(115200);
+  Serial.begin(115200);
   delay(1000);
 
   // Serial.println();
