@@ -21,7 +21,7 @@ using Precision = float;
 VL6180X tof;
 
 #define SCALE_FACTOR 2
-#define SEND_DELAY_MS 50
+#define SEND_DELAY_MS 100
 
 struct __attribute__((packed)) ToFData {
   Precision distance_mm;       // distance in millimeters
@@ -67,7 +67,11 @@ void setup() {
   pDistanceCharacteristic->addDescriptor(new BLE2902());
 
   pService->start();
-  pServer->getAdvertising()->start();
+  BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);
+  BLEDevice::startAdvertising();
 
   // unnecessary, TODO: remove later
   Serial.print("BLE advertising started as: ");
