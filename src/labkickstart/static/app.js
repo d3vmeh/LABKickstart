@@ -123,14 +123,93 @@ async function loadRuns() {
   for (const r of data.runs) {
     if (r.run_id === activeId) continue;  // recording — show in run-status, not history
     const link = el("a", { href: `/api/runs/${encodeURIComponent(r.run_id)}/csv`, text: "Download CSV" });
-    tb.appendChild(el("tr", {}, [
+    const ql = el("button", { text: "Quicklook" });
+    const actionsTd = el("td", {}, [ql, document.createTextNode(" "), link]);
+    const row = el("tr", {}, [
       el("td", {}, [el("code", { text: r.run_id })]),
       el("td", { text: r.name }),
       el("td", { text: fmtBytes(r.size_bytes) }),
-      el("td", {}, [link]),
-    ]));
+      actionsTd,
+    ]);
+    tb.appendChild(row);
+    ql.addEventListener("click", () => toggleQuicklook(r.run_id, row, ql));
   }
   setRunUI(data.active);
+}
+
+// ---------- Quicklook ----------
+const STAT_ORDER = ["count", "mean", "median", "p5", "p95", "std", "sem"];
+const STAT_LABEL = {
+  count: "N",
+  mean: "mean",
+  median: "median (p50)",
+  p5: "p5",
+  p95: "p95",
+  std: "σ (std)",
+  sem: "σ/√N (sem)",
+};
+
+function fmtStat(stat, v) {
+  if (stat === "count") return String(v);
+  if (!isFinite(v)) return "—";
+  const a = Math.abs(v);
+  if (a !== 0 && (a < 0.01 || a >= 1e6)) return v.toExponential(3);
+  return v.toFixed(3);
+}
+
+async function toggleQuicklook(runId, row, btn) {
+  const next = row.nextElementSibling;
+  if (next && next.classList.contains("quicklook-row") && next.dataset.runId === runId) {
+    next.remove();
+    btn.textContent = "Quicklook";
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "Loading…";
+  let data;
+  try {
+    data = await api(`/api/runs/${encodeURIComponent(runId)}/quicklook`);
+  } catch (e) {
+    btn.textContent = "Quicklook";
+    btn.disabled = false;
+    alert(`Quicklook failed: ${e.message || e}`);
+    return;
+  }
+  btn.disabled = false;
+  btn.textContent = "Hide";
+  const panel = renderQuicklook(runId, data.channels);
+  const tr = el("tr", { class: "quicklook-row" }, [
+    el("td", { attrs: { colspan: "4" } }, [panel]),
+  ]);
+  tr.dataset.runId = runId;
+  row.after(tr);
+}
+
+function renderQuicklook(runId, channels) {
+  const panel = el("div", { class: "ql-panel" });
+  panel.appendChild(el("div", { class: "ql-head", text: "§ Quicklook" }));
+  const channelNames = Object.keys(channels);
+  if (channelNames.length === 0) {
+    panel.appendChild(el("div", { class: "ql-stat", text: "(no numeric data in this run)" }));
+    return panel;
+  }
+  for (const ch of channelNames.sort()) {
+    const stats = channels[ch];
+    const wrap = el("div", { class: "ql-channel" });
+    wrap.appendChild(el("div", { class: "ql-channel-name", text: ch }));
+    const grid = el("div", { class: "ql-stats" });
+    for (const stat of STAT_ORDER) {
+      if (!(stat in stats)) continue;
+      const value = stats[stat];
+      grid.appendChild(el("div", { class: "ql-stat" }, [
+        el("span", { class: "name", text: STAT_LABEL[stat] + ":" }),
+        el("span", { class: "val", text: fmtStat(stat, value) }),
+      ]));
+    }
+    wrap.appendChild(grid);
+    panel.appendChild(wrap);
+  }
+  return panel;
 }
 
 function setRunUI(active) {
@@ -663,7 +742,10 @@ function ensureSeries(c, channel) {
 }
 
 function pushSample(s) {
-  if (RAW_CHANNEL_RE.test(s.channel)) return;
+  // Sandbox shows everything (including raw _us/_ms channels) since there
+  // are no derived channels to swamp; other kits hide raw events to keep
+  // the chart's y-scale on the derived physics quantities.
+  if (kitState.activeId !== "sandbox" && RAW_CHANNEL_RE.test(s.channel)) return;
   const c = ensureChart(s.device_id);
   ensureSeries(c, s.channel);
   // If a run is active, anchor t=0 to the first sample we receive after Arm.

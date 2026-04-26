@@ -290,6 +290,45 @@
     .trig-row input[type=number] { width: 90px; }
     .trig-row .unit { color: var(--ink-soft); }
 
+    /* Quicklook: per-run summary stats panel */
+    .quicklook-row td {
+      padding: 0;
+      background: var(--surface);
+      border-bottom: 1px solid var(--rule-soft);
+    }
+    .ql-panel { padding: 14px 12px; }
+    .ql-head {
+      font: italic 400 14px/1 var(--font-display);
+      margin-bottom: 10px;
+      color: var(--ink);
+    }
+    .ql-channel {
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px dashed var(--rule-soft);
+    }
+    .ql-channel:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .ql-channel-name {
+      font: 13px/1 var(--font-mono);
+      color: var(--ink);
+      margin-bottom: 6px;
+      letter-spacing: .04em;
+    }
+    .ql-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 6px 14px;
+    }
+    .ql-stat {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      font: 12px/1.4 var(--font-mono);
+      color: var(--ink);
+    }
+    .ql-stat .name { color: var(--ink-soft); }
+    .ql-stat .val { font-variant-numeric: tabular-nums; }
+
     table {
       width: 100%;
       border-collapse: collapse;
