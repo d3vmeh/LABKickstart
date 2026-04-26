@@ -400,11 +400,95 @@ class SandboxKit:
         return ()
 
 
+class IMUSinusoidKit:
+    """IMU-only sinusoid viewer with band-pass smoothing.
+
+    For each IMU channel emits two derived series:
+      `<channel>_smooth` - short rolling mean (noise filter, low-pass)
+      `<channel>_osc`    - smooth minus long rolling mean (band-pass,
+                           DC/gravity removed and centered at zero)
+
+    The `_osc` trace is what students should look at for periodic motion:
+    no gravity baseline crowding the y-axis, no per-sample noise spikes,
+    just the oscillation centered around zero. Tune `window` smaller for
+    less lag, `baseline_window` larger to keep slower oscillations.
+    """
+
+    SMOOTHED_CHANNELS = ("pitch_deg", "roll_deg", "accel_x", "accel_y", "accel_z")
+    DEFAULT_WINDOW = 9
+    DEFAULT_BASELINE_WINDOW = 81
+    MIN_WINDOW = 1
+    MAX_WINDOW = 501
+
+    info = KitInfo(
+        id="imu_sinusoid",
+        name="IMU Sinusoid (smoothed)",
+        description=(
+            "IMU-only oscillation viewer. Applies a band-pass (short rolling "
+            "mean for noise, long rolling baseline for gravity) so periodic "
+            "motion - a pendulum, a hanging spring, a wobbling cart - shows "
+            "up as a clean sine wave centered at zero. Watch the `_osc` "
+            "channels; the raw and `_smooth` channels are also kept for "
+            "comparison."
+        ),
+        params=[
+            KitParam(key="window", label="Smoothing window (samples)",
+                     unit="samples", default=DEFAULT_WINDOW, required=False),
+            KitParam(key="baseline_window",
+                     label="Baseline window for DC removal (samples)",
+                     unit="samples", default=DEFAULT_BASELINE_WINDOW, required=False),
+        ],
+        diagrams=[],
+        triggers=[],
+    )
+
+    def __init__(self) -> None:
+        self._window = self.DEFAULT_WINDOW
+        self._baseline_window = self.DEFAULT_BASELINE_WINDOW
+        self._smooth_buf: dict[str, deque[float]] = {}
+        self._baseline_buf: dict[str, deque[float]] = {}
+
+    def configure(self, params: dict) -> None:
+        def clamp_int(key: str, default: int) -> int:
+            try:
+                v = int(params.get(key, default))
+            except (TypeError, ValueError):
+                v = default
+            return max(self.MIN_WINDOW, min(self.MAX_WINDOW, v))
+
+        self._window = clamp_int("window", self.DEFAULT_WINDOW)
+        self._baseline_window = clamp_int("baseline_window", self.DEFAULT_BASELINE_WINDOW)
+        # Baseline must be at least as long as the smoothing window so the
+        # band-pass actually has a separation between the two cutoffs.
+        if self._baseline_window < self._window:
+            self._baseline_window = self._window
+        self._smooth_buf = {ch: deque(maxlen=self._window)
+                            for ch in self.SMOOTHED_CHANNELS}
+        self._baseline_buf = {ch: deque(maxlen=self._baseline_window)
+                              for ch in self.SMOOTHED_CHANNELS}
+
+    def derive(self, sample: Sample) -> Iterable[Sample]:
+        sb = self._smooth_buf.get(sample.channel)
+        bb = self._baseline_buf.get(sample.channel)
+        if sb is None or bb is None:
+            return ()
+        sb.append(sample.value)
+        bb.append(sample.value)
+        smoothed = sum(sb) / len(sb)
+        baseline = sum(bb) / len(bb)
+        osc = smoothed - baseline
+        return (
+            Sample(sample.device_id, sample.t, f"{sample.channel}_smooth", smoothed),
+            Sample(sample.device_id, sample.t, f"{sample.channel}_osc", osc),
+        )
+
+
 def build_registry() -> dict[str, Kit]:
     return {
         "sandbox": SandboxKit(),
         "photogate": PhotogateKit(),
         "imu": IMUKit(),
+        "imu_sinusoid": IMUSinusoidKit(),
         "tof": ToFKit(),
         "shm": SHMKit(),
     }
