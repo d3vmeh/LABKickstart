@@ -131,11 +131,20 @@ PROFILES: dict[str, Profile] = {
     ),
     "BEAMBREAK_Module": Profile(
         name="BEAMBREAK_Module",
-        name_prefix="BEAMBREAK_Module",
         service_uuid="f30c13bf-c618-424d-aeb6-d035b933750f",
         char_uuid="7c2b6f3a-4a8c-4d24-8f8b-32e2a5c76f10",
         decoder=_make_beambreak_decoder,
-        description="Photogate: pairs BLOCKED/CLEAR into gate_A/B_break_us",
+        description="Photogate (single-gate firmware): gate_A/B_break_us",
+    ),
+    # Dual-gate sketch: one ESP32 reads two beam-break sensors. Different
+    # UUIDs from the single-gate sketch, same wire format.
+    "BEAMBREAK_Module_2": Profile(
+        name="BEAMBREAK_Module_2",
+        name_prefix="BEAMBREAK_Module",
+        service_uuid="a13ebb02-0bce-4cab-a875-2659399c1da3",
+        char_uuid="c650e0f7-e67d-46cf-ba89-4fd287070199",
+        decoder=_make_beambreak_decoder,
+        description="Photogate (dual-gate firmware): gate_A/B_break_us",
     ),
     "TOF_Module": Profile(
         name="TOF_Module",
