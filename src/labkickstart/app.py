@@ -21,6 +21,7 @@ from .lab_guides import (
     PDFTooLargeError,
     generate_and_save,
 )
+from .quicklook import RunNotFoundError, compute_stats
 from .runs import ActiveTrigger, RunStore
 from .sensors import MockIMUSensor, MockPhotogateSensor, MockToFSensor, Sample, SensorSource
 
@@ -351,6 +352,19 @@ async def delete_all_runs() -> dict:
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
     return {"deleted": deleted}
+
+
+@app.get("/api/runs/{run_id}/quicklook")
+async def run_quicklook(run_id: str) -> dict:
+    hub: Hub = app.state.hub
+    p = hub.runs.path_for(run_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    try:
+        stats = compute_stats(p)
+    except RunNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"run_id": run_id, "channels": stats}
 
 
 @app.get("/api/runs/{run_id}/csv")

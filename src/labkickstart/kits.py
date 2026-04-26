@@ -102,7 +102,7 @@ class PhotogateKit:
             "acceleration between gates."
         ),
         params=[
-            KitParam("d_AB", "Distance between gates", "m", default=0.50, required=True),
+            KitParam("d_AB", "Distance between gates", "m", default=0.2032, required=True),
             KitParam("flag_w", "Flag / cart width", "m", default=0.05, required=False),
         ],
         diagrams=[
@@ -232,7 +232,7 @@ class ToFKit:
                 channel="distance_mm",
                 unit="mm",
                 direction="below",
-                default_value=150.0,
+                default_value=50.0,
             ),
         ],
     )
@@ -374,8 +374,35 @@ class SHMKit:
 
 
 # Registry. Add new kits here as classes are written.
+class SandboxKit:
+    """Pass-through kit for testing arbitrary modules. Accepts every raw
+    channel from any connected device and emits no derived samples. Useful
+    for bringing up new sensors or running multiple modules side-by-side
+    without committing to a specific experiment."""
+
+    info = KitInfo(
+        id="sandbox",
+        name="Sandbox (any sensor)",
+        description=(
+            "Show raw data from every connected module. No derivations, "
+            "no parameters - good for testing new sensors or recording "
+            "ad-hoc multi-module sessions."
+        ),
+        params=[],
+        diagrams=[],
+        triggers=[],
+    )
+
+    def configure(self, params: dict) -> None:
+        return
+
+    def derive(self, sample: Sample) -> Iterable[Sample]:
+        return ()
+
+
 def build_registry() -> dict[str, Kit]:
     return {
+        "sandbox": SandboxKit(),
         "photogate": PhotogateKit(),
         "imu": IMUKit(),
         "tof": ToFKit(),
