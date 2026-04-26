@@ -6,8 +6,8 @@
 */
 
 
-#define IR_PIN 19
-#define LED_PIN 25
+#define IR_PIN 17
+#define LED_PIN 23
 
 int sensorState = 0;
 
