@@ -3,7 +3,7 @@
 > An open, modular, IoT-enabled physics lab toolkit.
 > 🥇 **1st place overall — IDEA Hacks 2026**
 
-LABKickstart turns a laptop and a few $5 ESP32 boards into a complete physics
+LABKickstart turns a laptop and a few $10 ESP32 boards into a complete physics
 lab data-acquisition system. Each module reads one sensor and broadcasts over
 Bluetooth LE; a Python web dashboard receives the streams, runs experiment-
 specific derivations, plots live data, writes clean CSVs, and (optionally)
