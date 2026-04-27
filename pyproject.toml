@@ -1,15 +1,17 @@
 [project]
 name = "labkickstart"
-version = "0.0.1"
-description = "Modular physics lab hub: ESP32 sensors -> Pi -> web UI"
+version = "0.1.0"
+description = "Open, modular, IoT-enabled physics lab toolkit (ESP32 BLE modules + FastAPI dashboard)."
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
+    "bleak>=0.22",
+    "python-multipart>=0.0.7",
+    "python-dotenv>=1.0",
+    "openai>=1.0",
+    "pypdf>=4.0",
 ]
-
-[project.optional-dependencies]
-ble = ["bleak>=0.22"]
 
 [build-system]
 requires = ["hatchling"]

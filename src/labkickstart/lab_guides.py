@@ -189,8 +189,15 @@ def _build_user_prompt(kit: KitInfo, pdf_text: str) -> str:
     )
 
 
-def _call_openai(api_key: str, user_prompt: str) -> dict:
-    """One call to gpt-4o-mini. Raises LLMCallError on any failure."""
+def _call_llm_json(
+    api_key: str,
+    system_prompt: str,
+    user_prompt: str,
+    json_schema: dict,
+    temperature: float = 0.3,
+) -> dict:
+    """One schema-constrained gpt-4o-mini call. Raises LLMCallError on
+    any failure (transport, empty response, malformed JSON)."""
     try:
         from openai import OpenAI
     except ImportError as e:
@@ -201,14 +208,11 @@ def _call_openai(api_key: str, user_prompt: str) -> dict:
         completion = client.chat.completions.create(
             model=LLM_MODEL,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            response_format={
-                "type": "json_schema",
-                "json_schema": GUIDE_JSON_SCHEMA,
-            },
-            temperature=0.3,
+            response_format={"type": "json_schema", "json_schema": json_schema},
+            temperature=temperature,
         )
     except Exception as e:
         raise LLMCallError(f"OpenAI call failed: {e}") from e
@@ -278,7 +282,9 @@ async def generate_and_save(
     last_error: Exception | None = None
     for attempt in (1, 2):                        # one retry
         try:
-            generated = await asyncio.to_thread(_call_openai, api_key, prompt)
+            generated = await asyncio.to_thread(
+                _call_llm_json, api_key, SYSTEM_PROMPT, prompt, GUIDE_JSON_SCHEMA, 0.3,
+            )
             generated = _validate(generated)
             break
         except LLMCallError as e:
@@ -359,36 +365,6 @@ def _build_recommender_prompt(handout_text: str, kits: list[dict]) -> str:
     )
 
 
-def _call_recommender(api_key: str, user_prompt: str, kit_ids: list[str]) -> dict:
-    try:
-        from openai import OpenAI
-    except ImportError as e:
-        raise LLMCallError("openai package not installed") from e
-    client = OpenAI(api_key=api_key)
-    try:
-        completion = client.chat.completions.create(
-            model=LLM_MODEL,
-            messages=[
-                {"role": "system", "content": RECOMMENDER_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            response_format={
-                "type": "json_schema",
-                "json_schema": _recommender_schema(kit_ids),
-            },
-            temperature=0.2,
-        )
-    except Exception as e:
-        raise LLMCallError(f"OpenAI call failed: {e}") from e
-    content = completion.choices[0].message.content
-    if not content:
-        raise LLMCallError("OpenAI returned empty content")
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError as e:
-        raise LLMCallError(f"OpenAI returned non-JSON: {e}") from e
-
-
 async def recommend_kits(
     *,
     kits: list[dict],
@@ -417,7 +393,10 @@ async def recommend_kits(
     kit_ids = [k["id"] for k in kits]
     by_id = {k["id"]: k for k in kits}
     prompt = _build_recommender_prompt(body_text, kits)
-    result = await asyncio.to_thread(_call_recommender, api_key, prompt, kit_ids)
+    result = await asyncio.to_thread(
+        _call_llm_json, api_key, RECOMMENDER_SYSTEM_PROMPT, prompt,
+        _recommender_schema(kit_ids), 0.2,
+    )
     recs = result.get("recommendations") or []
     if not recs:
         raise LLMCallError("recommender returned no recommendations")
