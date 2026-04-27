@@ -825,6 +825,97 @@ document.getElementById("arm").addEventListener("click", async () => {
 });
 
 document.getElementById("kit-apply").addEventListener("click", applyKit);
+document.getElementById("kit-recommend-toggle").addEventListener("click", toggleKitRecommend);
+
+// ---------- Kit recommender ----------
+function toggleKitRecommend() {
+  const host = document.getElementById("kit-recommend");
+  const btn = document.getElementById("kit-recommend-toggle");
+  if (!host.hasAttribute("hidden")) {
+    host.setAttribute("hidden", "");
+    btn.textContent = "Recommend from PDF…";
+    return;
+  }
+  host.removeAttribute("hidden");
+  btn.textContent = "Hide recommender";
+  renderKitRecommendInput(host);
+}
+
+function renderKitRecommendInput(host) {
+  host.replaceChildren();
+  const fileInput = el("input", { id: "kr-file", attrs: { type: "file", accept: ".pdf,application/pdf" } });
+  const goBtn = el("button", { text: "Recommend kit" });
+  goBtn.classList.add("primary");
+  const status = el("span", { class: "kr-status", text: "Pick a teacher's lab handout. GPT-4o-mini will suggest a matching kit." });
+  const row = el("div", { class: "kr-row" }, [
+    el("label", { attrs: { for: "kr-file" }, text: "Lab handout PDF" }),
+    fileInput, goBtn,
+  ]);
+  host.appendChild(row);
+  host.appendChild(status);
+  goBtn.addEventListener("click", async () => {
+    const f = fileInput.files?.[0];
+    if (!f) {
+      status.textContent = "select a PDF first";
+      status.classList.add("lg-error");
+      return;
+    }
+    status.classList.remove("lg-error");
+    status.textContent = "Analyzing… (this takes a few seconds)";
+    goBtn.disabled = true;
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      const r = await fetch("/api/kits/recommend", { method: "POST", body: fd });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.detail || `HTTP ${r.status}`);
+      renderKitRecommendResults(host, data.recommendations || []);
+    } catch (e) {
+      status.classList.add("lg-error");
+      status.textContent = `recommend failed: ${e.message || e}`;
+    } finally {
+      goBtn.disabled = false;
+    }
+  });
+}
+
+function renderKitRecommendResults(host, recs) {
+  // Keep the input row at top, append the results below.
+  const existing = host.querySelector(".kr-list");
+  if (existing) existing.remove();
+  const status = host.querySelector(".kr-status");
+  if (recs.length === 0) {
+    status.textContent = "no matching kit found";
+    return;
+  }
+  status.textContent = `Top ${recs.length} suggestion${recs.length === 1 ? "" : "s"}:`;
+  status.classList.remove("lg-error");
+  const list = el("div", { class: "kr-list" });
+  for (const r of recs) {
+    const item = el("div", { class: "kr-item" });
+    item.appendChild(el("div", { class: "kr-head", text: r.name }));
+    item.appendChild(el("div", { class: "kr-conf " + (r.confidence || "medium"), text: r.confidence || "medium" }));
+    item.appendChild(el("div", { class: "kr-rationale", text: r.rationale || "" }));
+    if (r.modules && r.modules.length) {
+      item.appendChild(el("div", { class: "kr-modules", text: "modules: " + r.modules.join(", ") }));
+    } else {
+      item.appendChild(el("div", { class: "kr-modules", text: "modules: (any)" }));
+    }
+    const apply = el("button", { class: "primary", text: "Use this kit" });
+    apply.addEventListener("click", () => useRecommendedKit(r.kit_id));
+    item.appendChild(el("div", { class: "kr-actions" }, [apply]));
+    list.appendChild(item);
+  }
+  host.appendChild(list);
+}
+
+function useRecommendedKit(kitId) {
+  const sel = document.getElementById("kit-select");
+  sel.value = kitId;
+  kitState.selectedId = kitId;
+  renderSelectedKit();
+}
+
 document.getElementById("ble-scan").addEventListener("click", bleScan);
 document.getElementById("ble-forget").addEventListener("click", async () => {
   await fetch("/api/ble/forget", { method: "POST" });

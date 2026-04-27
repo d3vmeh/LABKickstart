@@ -8,6 +8,7 @@ The route layer maps these exceptions onto HTTP status codes; see
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass
@@ -253,9 +254,9 @@ async def generate_and_save(
 ) -> dict:
     """Both PDF extraction (pypdf, CPU-bound) and the LLM call (sync OpenAI
     SDK) are dispatched via `asyncio.to_thread` so they don't block the
-    event loop while the lab guide generates (~10 seconds typical)."""
-    import asyncio
-    """Generate a guide from either a PDF or pre-extracted text.
+    event loop while the lab guide generates (~10 seconds typical).
+
+    Generates a guide from either a PDF or pre-extracted text.
 
     Exactly one of `pdf_bytes` / `text` should be supplied. If a PDF is
     supplied it's also persisted as `source.pdf` for traceability; if text
@@ -287,3 +288,151 @@ async def generate_and_save(
         raise LLMCallError(str(last_error) if last_error else "LLM call failed")
     store.save(kit_id, generated, pdf_bytes=pdf_bytes, text=body_text if pdf_bytes is None else None)
     return generated
+
+
+# ---------- Kit recommender ----------
+# Given the lab handout text and the full kit registry, ask gpt-4o-mini
+# which kit best matches the experiment described in the handout. Output
+# is structurally constrained: the LLM picks kit_ids from a closed set,
+# so it cannot hallucinate a kit that doesn't exist.
+
+RECOMMENDER_SYSTEM_PROMPT = (
+    "You are an expert at matching physics-lab procedures to the right "
+    "data-acquisition equipment. Given a lab handout and a closed list of "
+    "available kits (each tied to a specific BLE sensor module), pick up to "
+    "three kits, ranked by how well they fit the experiment described. For "
+    "each, give a one-sentence rationale grounded in what the handout asks "
+    "students to measure. Do not recommend a kit not in the provided list."
+)
+
+
+def _recommender_schema(kit_ids: list[str]) -> dict:
+    return {
+        "name": "kit_recommendations",
+        "schema": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["recommendations"],
+            "properties": {
+                "recommendations": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 3,
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["kit_id", "rationale", "confidence"],
+                        "properties": {
+                            "kit_id": {"type": "string", "enum": kit_ids},
+                            "rationale": {"type": "string"},
+                            "confidence": {
+                                "type": "string",
+                                "enum": ["high", "medium", "low"],
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        "strict": True,
+    }
+
+
+def _build_recommender_prompt(handout_text: str, kits: list[dict]) -> str:
+    kit_lines = []
+    for k in kits:
+        mods = ", ".join(k.get("modules") or []) or "(any)"
+        kit_lines.append(
+            f"- id: {k['id']}\n"
+            f"  name: {k['name']}\n"
+            f"  description: {k['description']}\n"
+            f"  required modules: {mods}"
+        )
+    return (
+        "Available kits:\n"
+        + "\n".join(kit_lines)
+        + "\n\nLab handout text:\n---\n"
+        + handout_text
+        + "\n---\n\n"
+        "Pick up to three kits ranked best-first. For each, explain in one "
+        "sentence why it fits the experiment described."
+    )
+
+
+def _call_recommender(api_key: str, user_prompt: str, kit_ids: list[str]) -> dict:
+    try:
+        from openai import OpenAI
+    except ImportError as e:
+        raise LLMCallError("openai package not installed") from e
+    client = OpenAI(api_key=api_key)
+    try:
+        completion = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[
+                {"role": "system", "content": RECOMMENDER_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": _recommender_schema(kit_ids),
+            },
+            temperature=0.2,
+        )
+    except Exception as e:
+        raise LLMCallError(f"OpenAI call failed: {e}") from e
+    content = completion.choices[0].message.content
+    if not content:
+        raise LLMCallError("OpenAI returned empty content")
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as e:
+        raise LLMCallError(f"OpenAI returned non-JSON: {e}") from e
+
+
+async def recommend_kits(
+    *,
+    kits: list[dict],
+    api_key: str | None,
+    pdf_bytes: bytes | None = None,
+    text: str | None = None,
+) -> list[dict]:
+    """Return a ranked list of kit recommendations. Each item has
+    `kit_id`, `rationale`, `confidence`, and (server-injected) `modules`
+    derived from the kit registry so the UI can render hardware lists
+    without trusting the LLM for that part."""
+    if not api_key:
+        raise LLMConfigError("OPENAI_API_KEY is not configured on the server")
+    if not kits:
+        raise LLMCallError("kit registry is empty")
+    if pdf_bytes is not None:
+        body_text = await asyncio.to_thread(extract_pdf_text, pdf_bytes)
+    elif text is not None:
+        body_text = text.strip()
+        if not body_text:
+            raise PDFEmptyTextError("no text provided")
+        if len(body_text) > MAX_TEXT_CHARS:
+            body_text = body_text[:MAX_TEXT_CHARS]
+    else:
+        raise PDFInvalidError("provide either a PDF or text")
+    kit_ids = [k["id"] for k in kits]
+    by_id = {k["id"]: k for k in kits}
+    prompt = _build_recommender_prompt(body_text, kits)
+    result = await asyncio.to_thread(_call_recommender, api_key, prompt, kit_ids)
+    recs = result.get("recommendations") or []
+    if not recs:
+        raise LLMCallError("recommender returned no recommendations")
+    out: list[dict] = []
+    for r in recs:
+        kid = r.get("kit_id")
+        if kid not in by_id:
+            continue                                  # defensive: skip hallucinated ids
+        out.append({
+            "kit_id": kid,
+            "name": by_id[kid]["name"],
+            "rationale": r.get("rationale", ""),
+            "confidence": r.get("confidence", "medium"),
+            "modules": list(by_id[kid].get("modules") or []),
+        })
+    if not out:
+        raise LLMCallError("no valid recommendations after filtering")
+    return out

@@ -66,12 +66,17 @@ class KitInfo:
     params: list[KitParam]
     diagrams: list[KitDiagram] = field(default_factory=list)
     triggers: list[Trigger] = field(default_factory=list)
+    # Physical BLE module names this kit expects (matches BLE profile names
+    # in `ble_manager.PROFILES`). Used by the kit recommender so the UI can
+    # tell teachers which hardware to plug in. Empty list = "any / none".
+    modules: list[str] = field(default_factory=list)
 
     def to_json(self) -> dict:
         return {"id": self.id, "name": self.name, "description": self.description,
                 "params": [p.to_json() for p in self.params],
                 "diagrams": [d.to_json() for d in self.diagrams],
-                "triggers": [t.to_json() for t in self.triggers]}
+                "triggers": [t.to_json() for t in self.triggers],
+                "modules": list(self.modules)}
 
 
 class Kit(Protocol):
@@ -117,6 +122,7 @@ class PhotogateKit:
                 ),
             ),
         ],
+        modules=["BEAMBREAK_Module"],
     )
 
     def __init__(self) -> None:
@@ -196,6 +202,7 @@ class IMUKit:
         ),
         params=[],
         diagrams=[],
+        modules=["IMU_Module"],
     )
 
     def configure(self, params: dict) -> None:
@@ -235,6 +242,7 @@ class ToFKit:
                 default_value=50.0,
             ),
         ],
+        modules=["TOF_Module"],
     )
 
     def configure(self, params: dict) -> None:
@@ -275,6 +283,7 @@ class SHMKit:
         ),
         params=[],
         diagrams=[],
+        modules=["TOF_Module", "IMU_Module"],
     )
 
     PEAK_LOOKBACK = 5                # samples on each side
@@ -391,6 +400,7 @@ class SandboxKit:
         params=[],
         diagrams=[],
         triggers=[],
+        modules=[],
     )
 
     def configure(self, params: dict) -> None:
@@ -440,6 +450,7 @@ class IMUSinusoidKit:
         ],
         diagrams=[],
         triggers=[],
+        modules=["IMU_Module"],
     )
 
     def __init__(self) -> None:

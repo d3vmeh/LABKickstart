@@ -20,6 +20,7 @@ from .lab_guides import (
     PDFInvalidError,
     PDFTooLargeError,
     generate_and_save,
+    recommend_kits,
 )
 from .quicklook import RunNotFoundError, compute_stats
 from .runs import ActiveTrigger, RunStore
@@ -278,6 +279,34 @@ async def upload_lab_guide(
         raise HTTPException(status_code=503, detail=str(e))
     except LLMCallError as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.post("/api/kits/recommend")
+async def recommend_kit(
+    file: UploadFile | None = File(default=None),
+    text: str | None = Form(default=None),
+) -> dict:
+    hub: Hub = app.state.hub
+    if (file is None or not file.filename) and not (text and text.strip()):
+        raise HTTPException(status_code=400, detail="provide a PDF or paste text")
+    pdf_bytes = await file.read() if (file is not None and file.filename) else None
+    kits_payload = [k.info.to_json() for k in hub.kits.values()]
+    try:
+        recs = await recommend_kits(
+            kits=kits_payload,
+            api_key=os.environ.get("OPENAI_API_KEY"),
+            pdf_bytes=pdf_bytes,
+            text=text if pdf_bytes is None else None,
+        )
+    except PDFTooLargeError as e:
+        raise HTTPException(status_code=413, detail=str(e))
+    except (PDFInvalidError, PDFEmptyTextError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except LLMConfigError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except LLMCallError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return {"recommendations": recs}
 
 
 @app.delete("/api/kits/{kit_id}/lab_guide", status_code=204)
