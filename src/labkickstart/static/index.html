@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>LABKickstart</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <!-- Computer Modern (LaTeX serif) for headings -->
+  <!-- Computer Modern (LaTeX serif) for headings.
+       Loaded from CDN; if it fails the font-family chain falls back to Georgia. -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/aaaakshat/cm-web-fonts@latest/fonts.css">
-  <!-- Courier Prime: typewriter for body and data -->
-  <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.min.css">
+  <!-- Courier Prime body font + uPlot CSS: vendored locally so the dashboard
+       works on classroom networks that block CDNs. -->
+  <link rel="stylesheet" href="/static/vendor/fonts/courier-prime.css">
+  <link rel="stylesheet" href="/static/vendor/uplot/uPlot.min.css">
   <style>
     :root {
       color-scheme: light;
@@ -521,7 +521,7 @@
     </div>
   </section>
 
-  <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.iife.min.js"></script>
+  <script src="/static/vendor/uplot/uPlot.iife.min.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>
