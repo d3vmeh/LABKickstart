@@ -288,6 +288,11 @@ class BLEManager:
         return before - len(self._devices)
 
     async def disconnect(self, address: str) -> dict:
+        # Resolve the device first so a stale `forget_idle` race doesn't
+        # leave us cancelling a task and then raising "unknown device".
+        d = self._devices.get(address)
+        if d is None:
+            raise RuntimeError("unknown device")
         task = self._tasks.get(address)
         if task and not task.done():
             task.cancel()
@@ -297,9 +302,6 @@ class BLEManager:
                 pass
             except Exception:
                 pass
-        d = self._devices.get(address)
-        if d is None:
-            raise RuntimeError("unknown device")
         return d.to_json()
 
     @staticmethod

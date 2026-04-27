@@ -155,6 +155,9 @@ class MockPhotogateSensor:
         await asyncio.sleep(1.0)
         while True:
             a = self.a_mean + random.uniform(-self.a_jitter, self.a_jitter)
+            # Guard against a near-zero acceleration draw - v_A and dt_AB
+            # both divide by `a` and would explode at the boundary.
+            a = max(a, 1e-3)
             v_A = math.sqrt(2 * a * self.d_A)
             v_B = math.sqrt(2 * a * (self.d_A + self.d_AB))
             # Beam-break durations: how long the flag occludes the beam.

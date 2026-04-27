@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -27,6 +28,8 @@ from .runs import ActiveTrigger, RunStore
 from .sensors import MockIMUSensor, MockPhotogateSensor, MockToFSensor, Sample, SensorSource
 
 load_dotenv()
+
+log = logging.getLogger(__name__)
 
 STATIC = Path(__file__).parent / "static"
 
@@ -82,21 +85,36 @@ class Hub:
             self.dispatch(sample)
 
     def dispatch(self, sample: Sample) -> None:
-        """Persist + broadcast one sample, then run kit derivation."""
-        self._emit(sample)
+        """Persist + broadcast one sample, then run kit derivation. Derived
+        samples are flagged `priority=True` so a slow WS client doesn't
+        drop them - sparse signals like SHM `period_s` are emitted only
+        once per cycle and are exactly the ones we can't afford to lose."""
+        self._emit(sample, priority=False)
         kit = self.active_kit
         if kit is not None:
             for derived in kit.derive(sample):
-                self._emit(derived)
+                self._emit(derived, priority=True)
 
-    def _emit(self, sample: Sample) -> None:
+    def _emit(self, sample: Sample, *, priority: bool = False) -> None:
         if self.runs.active is not None:
             self.runs.write(sample)
         payload = _broadcast_payload(sample)
         for q in list(self._subscribers):
-            if q.full():
+            if not q.full():
+                q.put_nowait(payload)
                 continue
-            q.put_nowait(payload)
+            if priority:
+                # Make room for the derived sample by evicting the oldest
+                # raw sample. Best-effort: a fully drained queue between
+                # the full() check and get_nowait() raises QueueEmpty;
+                # treat that as "the slow client just caught up" and enqueue.
+                try:
+                    q.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+                q.put_nowait(payload)
+            else:
+                log.debug("WS queue full; dropping raw sample %s", sample.channel)
 
     def subscribe(self) -> asyncio.Queue[dict]:
         q: asyncio.Queue[dict] = asyncio.Queue(maxsize=1000)
@@ -413,7 +431,14 @@ async def ws_stream(ws: WebSocket) -> None:
     try:
         while True:
             payload = await q.get()
-            await ws.send_text(json.dumps(payload))
+            try:
+                await ws.send_text(json.dumps(payload, allow_nan=False))
+            except WebSocketDisconnect:
+                raise
+            except (TypeError, ValueError):
+                # Non-serializable sample (NaN/Inf/non-float). Skip and keep
+                # the socket open - one bad reading shouldn't kill the stream.
+                continue
     except WebSocketDisconnect:
         pass
     finally:

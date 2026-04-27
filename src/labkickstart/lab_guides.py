@@ -127,12 +127,11 @@ class LabGuideStore:
         (d / "generated.json").write_text(json.dumps(generated, indent=2))
 
     def delete(self, kit_id: str) -> bool:
+        import shutil
         d = self._kit_dir(kit_id)
         if not d.exists():
             return False
-        for child in d.iterdir():
-            child.unlink()
-        d.rmdir()
+        shutil.rmtree(d)
         return True
 
 
@@ -291,7 +290,10 @@ async def generate_and_save(
             last_error = e
             log.warning("lab-guide LLM attempt %d failed: %s", attempt, e)
     else:
-        raise LLMCallError(str(last_error) if last_error else "LLM call failed")
+        # Both attempts failed; preserve the last exception's traceback.
+        if last_error is not None:
+            raise LLMCallError(str(last_error)) from last_error
+        raise LLMCallError("LLM call failed")
     store.save(kit_id, generated, pdf_bytes=pdf_bytes, text=body_text if pdf_bytes is None else None)
     return generated
 
