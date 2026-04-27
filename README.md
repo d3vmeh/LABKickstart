@@ -85,7 +85,7 @@ Runs on macOS or a Raspberry Pi 4 (any host with Bluetooth and Python 3.11+).
 
 ```bash
 # 1. Clone + install
-git clone https://github.com/<org>/LABKickstart
+git clone https://github.com/d3vmeh/LABKickstart
 cd LABKickstart
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
