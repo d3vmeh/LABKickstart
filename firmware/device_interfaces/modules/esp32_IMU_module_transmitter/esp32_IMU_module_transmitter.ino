@@ -73,6 +73,7 @@ void loop() {
 
   imu_data.pitch = atan2(-imu_data.accelX, sqrt(imu_data.accelY * imu_data.accelY + imu_data.accelZ * imu_data.accelZ)) * SENSORS_RADS_TO_DPS;
   
+  Serial.print("")
   imu_data.roll = atan2(imu_data.accelY, imu_data.accelZ) * SENSORS_RADS_TO_DPS;
 
   pIMUCharacteristic->setValue((uint8_t*) &imu_data, sizeof(IMUData));
