@@ -16,17 +16,17 @@ setup guides.
 
 ## Why
 
-PASCO and Vernier have run school physics for 40 years. A $450 base station
+Incumbents have controlled high school physics for years. A $450 base station
 before you buy a single sensor; locked connectors; locked file formats. A
 district that has spent $30k on one vendor has to keep buying that vendor —
 every locked connector is a moat.
 
-A full LABKickstart kit costs less than one Vernier base station and unlocks
+A full LABKickstart kit costs less than one typical base station and unlocks
 20+ standard physics experiments — Hooke's law, Atwood machines, projectile
 motion, free fall, pendulums, collisions, friction, buoyancy.
 
 Every line of firmware, every Python module, every CAD file is open source.
-A teacher who has spent twenty years on PASCO can fork an experiment, modify
+A teacher who has spent twenty years using existing tools can fork an experiment, modify
 it for their classroom, and share it with the teacher next door — in twenty
 minutes.
 
