@@ -172,7 +172,7 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def index() -> HTMLResponse:
-    return HTMLResponse((STATIC / "index.html").read_text())
+    return HTMLResponse((STATIC / "index.html").read_text(encoding="utf-8"))
 
 
 @app.get("/api/devices")
