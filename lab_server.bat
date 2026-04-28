@@ -6,7 +6,7 @@ cd /d "%~dp0"
 
 :: Set default variables if not already set
 if "%VENV%"=="" set "VENV=.venv"
-if "%HOST%"=="" set "HOST=0.0.0.0"
+if "%HOST%"=="" set "HOST=127.0.0.1"
 if "%PORT%"=="" set "PORT=8000"
 
 :: Path to uvicorn in a Windows virtual environment
@@ -27,6 +27,6 @@ set "PYTHONPATH=%CD%\src"
 
 :: Run uvicorn
 echo Starting server on %HOST%:%PORT%...
-"%UVICORN_PATH%" labkickstart.app:app --host %HOST% --port %PORT% --reload %*
+"%UVICORN_PATH%" labkickstart.app:app --host %HOST% --port %PORT% %*
 
 pause

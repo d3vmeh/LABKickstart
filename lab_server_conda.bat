@@ -3,7 +3,7 @@
 cd /d "%~dp0"
 
 :: Set default variables
-if "%HOST%"=="" set "HOST=0.0.0.0"
+if "%HOST%"=="" set "HOST=127.0.0.1"
 if "%PORT%"=="" set "PORT=8000"
 
 :: Set PYTHONPATH so Python can find the 'src' folder
@@ -20,6 +20,6 @@ if %ERRORLEVEL% neq 0 (
 
 echo Starting LABKickstart on %HOST%:%PORT%...
 :: The %* allows you to pass extra flags to the command
-uvicorn labkickstart.app:app --host %HOST% --port %PORT% --reload %*
+uvicorn labkickstart.app:app --host %HOST% --port %PORT% %*
 
 pause
