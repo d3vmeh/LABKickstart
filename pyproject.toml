@@ -1,15 +1,11 @@
 [project]
 name = "labkickstart"
-version = "0.0.1"
-description = "Modular physics lab hub: ESP32 sensors -> Pi -> web UI"
+version = "0.1.0"
+description = "Open, modular, IoT-enabled physics lab toolkit (ESP32 BLE modules + FastAPI dashboard)."
 requires-python = ">=3.11"
-dependencies = [
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.30",
-]
-
-[project.optional-dependencies]
-ble = ["bleak>=0.22"]
+# Runtime dependencies are declared in `requirements.txt` (the canonical
+# install path: `pip install -r requirements.txt`). This file only carries
+# enough metadata for the project to be wheel-buildable in the future.
 
 [build-system]
 requires = ["hatchling"]

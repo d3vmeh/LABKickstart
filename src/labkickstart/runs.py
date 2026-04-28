@@ -21,6 +21,12 @@ class ActiveTrigger:
     direction: str        # "below" | "above"
     threshold: float
 
+    def __post_init__(self) -> None:
+        if self.direction not in ("below", "above"):
+            raise ValueError(
+                f"trigger direction must be 'below' or 'above', got {self.direction!r}"
+            )
+
     def matches(self, sample: Sample) -> bool:
         if sample.channel != self.channel:
             return False

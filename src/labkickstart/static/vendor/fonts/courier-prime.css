@@ -1,0 +1,30 @@
+/* Courier Prime - vendored from Google Fonts (v11) for offline classroom use.
+   See https://fonts.google.com/specimen/Courier+Prime - Open Font License. */
+@font-face {
+  font-family: 'Courier Prime';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./courier-prime-regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Courier Prime';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./courier-prime-bold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Courier Prime';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./courier-prime-italic.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Courier Prime';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./courier-prime-bold-italic.ttf') format('truetype');
+}

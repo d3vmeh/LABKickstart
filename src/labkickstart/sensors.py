@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import random
 import time
 from dataclasses import dataclass
 from typing import AsyncIterator, Protocol
@@ -34,13 +35,11 @@ class SensorSource(Protocol):
 
 
 class MockIMUSensor:
-    """Simulates the LSM303 IMU module's data stream.
+    """Simulates the LSM303 IMU module so the dashboard runs without hardware.
 
-    The real ESP32 IMU module (firmware/device_interfaces/modules/
-    esp32_IMU_module_transmitter) ships a 20-byte packed struct of five
-    little-endian float32s every 20 ms. The (future) Pi-side adapter will
-    unpack each notification into these five `Sample`s; we emit the same
-    shape here so the rest of the system is testable without hardware.
+    Emits the same five channels the real `IMU_Module` profile decodes (see
+    `ble_manager._decode_imu`): pitch_deg, roll_deg, accel_x/y/z. Used when
+    `LK_SENSOR=imu` is set; the BLE manager stays disabled in that mode.
 
     Channels:
         pitch_deg   - degrees, -90 .. +90    (gentle slow sweep + noise)
@@ -63,7 +62,6 @@ class MockIMUSensor:
         return [self._info]
 
     async def stream(self) -> AsyncIterator[Sample]:
-        import random
         start = time.monotonic()
         while True:
             t = time.monotonic() - start
@@ -107,7 +105,6 @@ class MockToFSensor:
         return [self._info]
 
     async def stream(self) -> AsyncIterator[Sample]:
-        import random
         start = time.monotonic()
         while True:
             t = time.monotonic() - start
@@ -154,11 +151,13 @@ class MockPhotogateSensor:
         return [self._info]
 
     async def stream(self) -> AsyncIterator[Sample]:
-        import random
         start = time.monotonic()
         await asyncio.sleep(1.0)
         while True:
             a = self.a_mean + random.uniform(-self.a_jitter, self.a_jitter)
+            # Guard against a near-zero acceleration draw - v_A and dt_AB
+            # both divide by `a` and would explode at the boundary.
+            a = max(a, 1e-3)
             v_A = math.sqrt(2 * a * self.d_A)
             v_B = math.sqrt(2 * a * (self.d_A + self.d_AB))
             # Beam-break durations: how long the flag occludes the beam.
