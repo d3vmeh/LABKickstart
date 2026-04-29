@@ -381,6 +381,38 @@ function renderKitStatus() {
   }
 }
 
+// ---------- Feature flags ----------
+const features = { ai: false, loaded: false };
+
+async function loadFeatures() {
+  try {
+    const r = await fetch('/api/features');
+    if (r.ok) {
+      const j = await r.json();
+      features.ai = !!j.ai;
+    }
+  } catch (_e) {
+    // Leave ai=false on error.
+  }
+  features.loaded = true;
+  applyFeatureGates();
+}
+
+function applyFeatureGates() {
+  const ids = ['kit-recommend-toggle', 'kit-recommend', 'kit-lab-guide'];
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    if (features.ai) {
+      el.removeAttribute('hidden');
+      el.style.display = '';
+    } else {
+      el.setAttribute('hidden', '');
+      el.style.display = 'none';
+    }
+  }
+}
+
 // ---------- Lab guide ----------
 const labGuideState = {
   kitId: null,
@@ -951,6 +983,7 @@ document.getElementById("delete-all").addEventListener("click", async () => {
 });
 
 (async function init() {
+  await loadFeatures();
   await loadDevices();
   await loadKits();
   await loadRuns();
