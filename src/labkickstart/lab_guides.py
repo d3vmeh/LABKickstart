@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -20,7 +21,7 @@ from .kits import KitInfo
 
 log = logging.getLogger(__name__)
 
-DATA_DIR = Path("data/lab_guides")
+DATA_DIR = Path(os.environ.get("LK_CACHE_DIR", "data/lab_guides"))
 MAX_PDF_BYTES = 5 * 1024 * 1024
 MAX_TEXT_CHARS = 12_000
 LLM_MODEL = "gpt-4o-mini"
