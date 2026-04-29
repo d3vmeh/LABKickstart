@@ -196,6 +196,15 @@ async def devices():
     return out
 
 
+@app.get("/api/features")
+async def features() -> dict:
+    """Report which optional features are enabled on the running server.
+
+    Used by the frontend to hide AI UI when no OpenAI key is configured.
+    """
+    return {"ai": bool(os.environ.get("OPENAI_API_KEY"))}
+
+
 @app.post("/api/ble/scan")
 async def ble_scan():
     hub: Hub = app.state.hub
