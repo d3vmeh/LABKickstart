@@ -51,22 +51,17 @@ def freeze() -> None:
 
 def rename_for_tauri() -> None:
     triple = target_triple()
-    src_dir = BINARIES / "lk-backend"
-    if not src_dir.is_dir():
-        raise SystemExit(f"PyInstaller output missing: {src_dir}")
-    dst_dir = BINARIES / f"lk-backend-{triple}"
-    if dst_dir.exists():
-        shutil.rmtree(dst_dir)
-    src_dir.rename(dst_dir)
-    # Rename the executable inside the folder too.
     is_win = platform.system() == "Windows"
-    inner_src = dst_dir / ("lk-backend.exe" if is_win else "lk-backend")
-    inner_dst = dst_dir / (
+    src = BINARIES / ("lk-backend.exe" if is_win else "lk-backend")
+    if not src.is_file():
+        raise SystemExit(f"PyInstaller output missing: {src}")
+    dst = BINARIES / (
         f"lk-backend-{triple}.exe" if is_win else f"lk-backend-{triple}"
     )
-    if inner_src.exists():
-        inner_src.rename(inner_dst)
-    print(f"[build.py] sidecar ready at {dst_dir}")
+    if dst.exists():
+        dst.unlink()
+    src.rename(dst)
+    print(f"[build.py] sidecar ready at {dst}")
 
 
 def tauri_build() -> None:

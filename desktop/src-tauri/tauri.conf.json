@@ -4,8 +4,7 @@
   "version": "0.1.0",
   "identifier": "org.labkickstart.app",
   "build": {
-    "frontendDist": "../static-stub",
-    "devUrl": "http://localhost:8000"
+    "frontendDist": "../static-stub"
   },
   "app": {
     "windows": [
