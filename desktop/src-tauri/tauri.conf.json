@@ -24,6 +24,7 @@
   "bundle": {
     "active": true,
     "targets": ["dmg", "nsis"],
+    "externalBin": ["binaries/lk-backend"],
     "icon": ["icons/icon.png"]
   }
 }

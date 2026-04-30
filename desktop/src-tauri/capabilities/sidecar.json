@@ -1,0 +1,18 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "sidecar",
+  "description": "Allow main window to spawn the lk-backend sidecar.",
+  "windows": ["main"],
+  "permissions": [
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "binaries/lk-backend",
+          "sidecar": true,
+          "args": []
+        }
+      ]
+    }
+  ]
+}
