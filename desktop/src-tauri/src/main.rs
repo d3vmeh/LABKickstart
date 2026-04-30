@@ -116,12 +116,35 @@ fn main() {
                                 }) {
                                     if let Ok(port) = rest.trim().parse::<u16>() {
                                         let url = format!("http://127.0.0.1:{}/", port);
-                                        if let Some(w) = app_for_task.get_webview_window("main") {
-                                            if let Ok(parsed) = tauri::Url::parse(&url) {
-                                                let _ = w.navigate(parsed);
-                                                navigated = true;
+                                        let app_for_navigate = app_for_task.clone();
+                                        let nav_result = app_for_task.run_on_main_thread(move || {
+                                            if let Some(w) = app_for_navigate.get_webview_window("main") {
+                                                if let Ok(parsed) = tauri::Url::parse(&url) {
+                                                    if let Err(e) = w.navigate(parsed) {
+                                                        append_log(&format!(
+                                                            "[nav-error] {:?}",
+                                                            e
+                                                        ));
+                                                    } else {
+                                                        append_log(&format!(
+                                                            "[nav-ok] {}",
+                                                            port
+                                                        ));
+                                                    }
+                                                } else {
+                                                    append_log("[nav-error] url parse failed");
+                                                }
+                                            } else {
+                                                append_log("[nav-error] no main window");
                                             }
+                                        });
+                                        if let Err(e) = nav_result {
+                                            append_log(&format!(
+                                                "[nav-error] run_on_main_thread: {:?}",
+                                                e
+                                            ));
                                         }
+                                        navigated = true;
                                     }
                                 }
                             }
