@@ -11,7 +11,7 @@
 BLECharacteristic* pBeamCharacteristic;
 
 // add a pin
-#define LED_PIN 23
+#define LED_PIN 25
 
 #define BLOCKED_LEVEL LOW   // Usually LOW for these IR sensors
 #define DEBOUNCE_US 10000   // 10 milliseconds

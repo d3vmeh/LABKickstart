@@ -16,7 +16,7 @@ BLECharacteristic* pBeamCharacteristic;
 #define BLOCKED_LEVEL LOW   // Usually LOW for these IR sensors
 #define DEBOUNCE_US 10000   // 10 milliseconds
 
-const int BEAM_PIN = 18;
+const int BEAM_PIN = 19;
 
 const uint8_t GATE_ID = 1;
 
